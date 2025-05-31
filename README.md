@@ -13,6 +13,8 @@ A powerful web-based tool for synchronizing CMS content (blocks and pages) betwe
 - 🔐 **Secure API Integration**: Connect to Magento instances using REST API tokens
 - 🚀 **High Performance**: Asynchronous operations with background task processing
 
+![Magento CMS Sync Screenshot](doc/magento2-cms-sync.png)
+
 ## Quick Start with Docker
 
 ```bash
@@ -131,6 +133,8 @@ PORT=3000
 1. Click the "View Diff" button on any item
 2. Review the changes in the visual diff viewer
 3. Click "Push to Destination" to sync that item
+
+![Diff Viewer Screenshot](doc/magento2-cms-sync-diff.png)
 
 #### Bulk Sync
 1. Select multiple items using checkboxes
