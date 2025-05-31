@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: cmssync-backend
+    environment:
+      - DATABASE_URL=sqlite:///./cmssync.db
+      - SECRET_KEY=${SECRET_KEY}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - backend-data:/app/data
+      - db-data:/app
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/docs"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - cmssync-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - REACT_APP_API_URL=${REACT_APP_API_URL:-http://localhost:8000}
+    container_name: cmssync-frontend
+    ports:
+      - "${PORT:-80}:80"
+    depends_on:
+      - backend
+    restart: always
+    networks:
+      - cmssync-network
+
+networks:
+  cmssync-network:
+    driver: bridge
+
+volumes:
+  backend-data:
+  db-data:
