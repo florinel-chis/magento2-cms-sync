@@ -8,6 +8,14 @@ export interface Instance {
   updated_at: string;
 }
 
+export interface DataSnapshot {
+  instance_id: number;
+  data_type: DataType;
+  item_count: number;
+  created_at: string;
+  file_path: string;
+}
+
 export interface InstanceCreate {
   name: string;
   url: string;
@@ -38,6 +46,38 @@ export interface StoreView {
   is_active: boolean;
 }
 
+// Magento CMS content types
+export interface CMSBlock {
+  id: number;
+  identifier: string;
+  title: string;
+  content: string;
+  is_active: boolean;
+  store_id: number[];
+  creation_time?: string;
+  update_time?: string;
+}
+
+export interface CMSPage {
+  id: number;
+  identifier: string;
+  title: string;
+  url_key: string;
+  content: string;
+  content_heading?: string;
+  is_active: boolean;
+  store_id: number[];
+  page_layout?: string;
+  meta_title?: string;
+  meta_keywords?: string;
+  meta_description?: string;
+  creation_time?: string;
+  update_time?: string;
+}
+
+// Union type for CMS content
+export type CMSContent = CMSBlock | CMSPage;
+
 export enum DataType {
   BLOCKS = 'blocks',
   PAGES = 'pages',
@@ -60,8 +100,8 @@ export interface ComparisonItem {
   title: string;
   source_status: ComparisonStatus;
   destination_status: ComparisonStatus;
-  source_data?: any;
-  destination_data?: any;
+  source_data?: CMSContent;  // Type-safe: CMSBlock | CMSPage
+  destination_data?: CMSContent;  // Type-safe: CMSBlock | CMSPage
   differences?: string[];
 }
 
@@ -81,8 +121,8 @@ export interface ComparisonResult {
 
 export interface DiffField {
   field_name: string;
-  source_value: any;
-  destination_value: any;
+  source_value: string | number | boolean | null | string[] | number[];  // Explicit union type
+  destination_value: string | number | boolean | null | string[] | number[];  // Explicit union type
   is_different: boolean;
 }
 
@@ -110,11 +150,23 @@ export interface SyncRequest {
   store_view_mapping?: Record<string, string>;
 }
 
+export interface SyncPreviewItem {
+  identifier: string;
+  title: string;
+  action: 'create' | 'update';
+}
+
 export interface SyncPreview {
-  items: any[];
+  items: SyncPreviewItem[];  // Type-safe array
   total_changes: number;
   creates: number;
   updates: number;
+}
+
+export interface SyncDetailItem {
+  identifier: string;
+  status: 'success' | 'failed';
+  message?: string;
 }
 
 export interface SyncResult {
@@ -124,6 +176,6 @@ export interface SyncResult {
   items_failed: number;
   started_at: string;
   completed_at?: string;
-  details: any[];
+  details: SyncDetailItem[];  // Type-safe array
   error_message?: string;
 }
