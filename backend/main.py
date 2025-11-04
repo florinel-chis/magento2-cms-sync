@@ -2,25 +2,40 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import os
+import logging
 from pathlib import Path
 
 from api import instances, compare, sync, history, test
 from models.database import init_db
 from config import settings
+from logging_config import setup_logging
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
+    logger.info("Starting Magento CMS Sync API")
+
+    # Initialize database
     await init_db()
-    
+    logger.info("Database initialized")
+
     # Create data directory for JSON storage
     data_dir = Path("data")
     data_dir.mkdir(exist_ok=True)
     (data_dir / "instances").mkdir(exist_ok=True)
-    
+    logger.info(f"Data directory created: {data_dir.absolute()}")
+
     yield
+
     # Shutdown
+    logger.info("Shutting down Magento CMS Sync API")
+
+
+# Configure logging BEFORE creating the FastAPI app
+setup_logging(log_level="INFO", log_to_file=True)
     
 
 app = FastAPI(

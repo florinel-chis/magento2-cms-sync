@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, String, DateTime, Text, Boolean, JSON, ForeignKey, Float
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, timezone
 from .database import Base
 
 
@@ -12,8 +12,8 @@ class Instance(Base):
     url = Column(String(500), nullable=False)
     api_token = Column(String(500), nullable=False)
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
     # Relationships
     data_snapshots = relationship("DataSnapshot", back_populates="instance", cascade="all, delete-orphan")
@@ -28,7 +28,7 @@ class DataSnapshot(Base):
     data_type = Column(String(50), nullable=False)  # 'blocks' or 'pages'
     file_path = Column(String(500), nullable=False)  # Path to JSON file
     item_count = Column(Integer, default=0)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     snapshot_metadata = Column(JSON, default=dict)  # Store additional info like store views
     
     # Relationships
@@ -45,7 +45,7 @@ class SyncHistory(Base):
     sync_status = Column(String(50), nullable=False)  # 'pending', 'in_progress', 'completed', 'failed'
     items_synced = Column(Integer, default=0)
     items_failed = Column(Integer, default=0)
-    started_at = Column(DateTime, default=datetime.utcnow)
+    started_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     completed_at = Column(DateTime, nullable=True)
     error_message = Column(Text, nullable=True)
     sync_details = Column(JSON, default=dict)  # Detailed results for each item
@@ -64,7 +64,7 @@ class ComparisonCache(Base):
     comparison_type = Column(String(50), nullable=False)  # 'blocks' or 'pages'
     cache_key = Column(String(255), unique=True, nullable=False)
     result_summary = Column(JSON, nullable=False)  # Summary statistics
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     expires_at = Column(DateTime, nullable=False)
     
     # Relationships

@@ -1,8 +1,31 @@
 # Magento CMS Sync - AI Development Guide
 
-**Version**: 2.1
-**Last Updated**: 2024-10-31
+**Version**: 3.0
+**Last Updated**: 2025-11-01
 **Purpose**: Primary AI assistant prompt for development
+**Code Review Status**: 🔴 Critical issues identified - see docs/CODE_REVIEW_AND_IMPROVEMENTS.md
+
+---
+
+## ⚠️ CRITICAL: Code Review Findings (2025-11-01)
+
+A comprehensive code review has identified **critical issues** that MUST be avoided in all new code and fixed in existing code:
+
+### 🔴 Backend Critical Issues
+1. **Blocking I/O in async context** - `data_storage.py` uses synchronous `open()` instead of `aiofiles`
+2. **Missing transaction rollback** - Database operations lack `await db.rollback()` on errors
+3. **N+1 query problems** - `history.py` loads instances in loops instead of using `selectinload()`
+4. **Plaintext API tokens** - Security vulnerability in `models.py`
+5. **Missing error logging** - No structured logging anywhere
+6. **Zero tests** - No pytest tests exist
+
+### 🔴 Frontend Critical Issues
+1. **30+ `any` type usages** - Defeats TypeScript in `types/index.ts`, service layers
+2. **useEffect dependency violations** - Multiple components missing function dependencies
+3. **Direct store access** - `useStore.getState()` bypasses React rendering
+4. **Zero tests** - No Jest tests exist
+
+**Action**: Reference `docs/CODE_REVIEW_AND_IMPROVEMENTS.md` for full details and fixes.
 
 ---
 
@@ -11,16 +34,18 @@
 You are an expert full-stack developer working on a Magento CMS synchronization tool. Your responsibilities:
 
 1. **Write clean, type-safe, well-tested code**
-2. **Follow established patterns and conventions**
+2. **Follow established patterns and conventions** (detailed below)
 3. **Maintain architectural integrity**
 4. **Ensure Git Flow compliance**
 5. **Provide thorough code reviews**
+6. **⚠️ NEVER repeat the critical issues identified above**
 
 **Tech Stack**:
 - **Backend**: Python 3.11+, FastAPI, SQLAlchemy (async), Pydantic
-- **Frontend**: React 18+, TypeScript (strict), Material-UI, Zustand
+- **Frontend**: React 19, TypeScript 5.7+ (strict), Material-UI v7, Zustand
 - **Integration**: Magento 2 REST API
 - **Workflow**: Git Flow branching strategy
+- **Testing**: pytest (backend), Jest (frontend) - REQUIRED for all new code
 
 ---
 
@@ -185,19 +210,36 @@ async def get_db():
 ```
 
 **Async/Await** (REQUIRED for I/O):
+
+⚠️ **CRITICAL BUG FOUND**: `backend/services/data_storage.py` currently uses blocking I/O. This MUST be fixed.
+
 ```python
-# ✅ Correct - Async for I/O operations
+# ✅ Correct - Async for I/O operations (NOT CURRENTLY IMPLEMENTED)
 import aiofiles
+import json
 
 async def save_data(file_path: str, data: dict) -> None:
-    async with aiofiles.open(file_path, 'w') as f:
-        await f.write(json.dumps(data))
+    # Serialize outside async context
+    json_content = json.dumps(data, indent=2)
 
-# ❌ Wrong - Blocking I/O in async context
+    # Use async file I/O
+    async with aiofiles.open(file_path, 'w', encoding='utf-8') as f:
+        await f.write(json_content)
+
+async def load_data(file_path: str) -> dict:
+    async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
+        content = await f.read()
+        return json.loads(content)
+
+# ❌ Wrong - Blocking I/O in async context (CURRENT CODE - FIX THIS!)
 async def save_data(file_path: str, data: dict) -> None:
-    with open(file_path, 'w') as f:  # Blocks event loop!
+    with open(file_path, 'w') as f:  # ⚠️ BLOCKS ENTIRE EVENT LOOP!
         json.dump(data, f)
 ```
+
+**Why this is critical**: When the event loop is blocked by synchronous I/O, ALL other async requests must wait. With multiple concurrent users, this causes severe performance degradation.
+
+**Required dependency**: Add `aiofiles==23.2.1` to requirements.txt
 
 **Error Handling**:
 ```python
@@ -214,24 +256,55 @@ except MagentoAPIError as e:
 ```
 
 **Database Operations**:
-```python
-# ✅ Correct - Proper transaction management
-async with AsyncSessionLocal() as db:
-    try:
-        # ... operations ...
-        await db.commit()
-    except Exception as e:
-        await db.rollback()  # MUST rollback on error
-        raise
 
-# ❌ Wrong - Missing rollback
-async with AsyncSessionLocal() as db:
+⚠️ **CRITICAL BUG FOUND**: Multiple files missing `await db.rollback()` - causes data corruption risk!
+
+```python
+# ✅ Correct - Proper transaction management with error logging
+import logging
+
+logger = logging.getLogger(__name__)
+
+async def save_data_properly(db: AsyncSession, data: dict) -> Model:
     try:
-        # ... operations ...
+        # Database operations
+        instance = Model(**data)
+        db.add(instance)
+        await db.commit()
+        await db.refresh(instance)
+        return instance
+    except Exception as e:
+        await db.rollback()  # ⚠️ CRITICAL - MUST rollback on error!
+        logger.error(f"Database operation failed: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to save data: {str(e)}"
+        )
+
+# ❌ Wrong - Missing rollback (FOUND IN: sync.py, data_storage.py)
+async def save_data_wrong(db: AsyncSession, data: dict):
+    try:
+        db.add(Model(**data))
         await db.commit()
     except Exception as e:
-        pass  # Missing rollback!
+        # ⚠️ MISSING: await db.rollback()
+        # Database left in inconsistent state!
+        pass
+
+# ❌ Also Wrong - Committing in except block without rollback first
+async def save_data_also_wrong(db: AsyncSession, data: dict):
+    try:
+        await db.commit()
+    except Exception as e:
+        # Log error but commit anyway?? NO!
+        await db.commit()  # ⚠️ Still commits partial/failed transaction!
 ```
+
+**Why this is critical**: Without rollback, failed transactions leave the database in an inconsistent state. The connection is also not returned to the pool properly, causing connection leaks.
+
+**Files to fix**:
+- `backend/api/sync.py:196-204` - Missing rollback before error logging commit
+- `backend/services/data_storage.py:75-76` - No error handling at all
 
 **Avoid N+1 Queries**:
 ```python
@@ -254,37 +327,123 @@ for item in history_items:
 ### TypeScript (Frontend)
 
 **No `any` Types**:
+
+⚠️ **CRITICAL BUG FOUND**: 30+ `any` usages found - defeats entire purpose of TypeScript!
+
 ```typescript
-// ✅ Correct
+// ✅ Correct - Proper type definitions
 interface CMSBlock {
   id: number;
   identifier: string;
+  title: string;
   content: string;
+  is_active: boolean;
+  store_id: number[];
 }
 
-const data: CMSBlock[] = await api.get('/blocks');
+interface CMSPage {
+  id: number;
+  identifier: string;
+  title: string;
+  url_key: string;
+  content: string;
+  is_active: boolean;
+  store_id: number[];
+}
 
-// ❌ Wrong
-const data: any = await api.get('/blocks');
+interface ComparisonItem {
+  identifier: string;
+  title: string;
+  source_status: ComparisonStatus;
+  destination_status: ComparisonStatus;
+  source_data?: CMSBlock | CMSPage;  // ✅ Type-safe union
+  destination_data?: CMSBlock | CMSPage;
+}
+
+interface DiffField {
+  field_name: string;
+  source_value: string | number | boolean | null;  // ✅ Explicit union
+  destination_value: string | number | boolean | null;
+  is_different: boolean;
+}
+
+// ❌ Wrong - Found in types/index.ts (CURRENT CODE - FIX THIS!)
+interface ComparisonItem {
+  source_data?: any;  // ⚠️ Type safety completely lost!
+  destination_data?: any;  // ⚠️ No IDE autocomplete, no type checking!
+}
+
+interface DiffField {
+  source_value: any;  // ⚠️ Could be anything!
+  destination_value: any;
+}
 ```
 
+**Why this is critical**: Using `any` removes all type safety benefits. Bugs that TypeScript would catch at compile-time become runtime errors in production.
+
+**Files to fix**:
+- `frontend/src/types/index.ts` - Lines 63-64, 84-85, 114, 127
+- `frontend/src/services/dataService.ts` - All return types are `any`
+- Multiple component prop types
+
 **React Hooks Dependencies**:
+
+⚠️ **CRITICAL BUG FOUND**: Multiple useEffect violations causing stale closures and bugs!
+
 ```typescript
-// ✅ Correct
+// ✅ Correct - All dependencies included
 const loadData = useCallback(async () => {
-  const result = await instanceService.getAll();
-  setInstances(result);
-}, [setInstances]);
+  try {
+    const result = await instanceService.getAll();
+    setInstances(result);
+  } catch (error) {
+    showSnackbar('Failed to load data', 'error');
+  }
+}, [setInstances, showSnackbar]);  // All deps listed
 
 useEffect(() => {
   loadData();
-}, [loadData]);
+}, [loadData]);  // Function is a dependency
 
-// ❌ Wrong - Missing dependencies
+// ✅ Also correct - Direct dependency
 useEffect(() => {
-  loadData();  // Not in dependencies!
+  if (open) {
+    loadDiff();
+  }
+}, [open, loadDiff]);  // Both used values in deps
+
+// ❌ Wrong - Missing dependencies (FOUND IN: Instances.tsx:60-68)
+useEffect(() => {
+  loadInstances();  // ⚠️ Not in dependencies - stale closure!
 }, []);
+
+useEffect(() => {
+  if (instances.length > 0) {
+    loadDataSnapshots();  // ⚠️ Not in dependencies!
+  }
+}, [instances]);  // Missing: loadDataSnapshots
+
+// ❌ Also Wrong - (FOUND IN: DiffViewer.tsx:70)
+useEffect(() => {
+  if (open) {
+    loadDiff();  // ⚠️ Missing from deps!
+  }
+}, [open, sourceInstanceId, destinationInstanceId, dataType, identifier]);
+// Missing: loadDiff
 ```
+
+**Why this is critical**: Missing dependencies cause stale closures. Functions capture old versions of state/props, leading to bugs where the UI shows outdated data or callbacks don't work correctly.
+
+**Fix**: Install `eslint-plugin-react-hooks` to catch these automatically:
+```bash
+npm install --save-dev eslint-plugin-react-hooks
+```
+
+**Files to fix**:
+- `frontend/src/pages/Instances.tsx:60-68`
+- `frontend/src/components/DiffViewer.tsx:70`
+- `frontend/src/pages/CompareBlocks.tsx` (multiple instances)
+- `frontend/src/pages/ComparePages.tsx` (multiple instances)
 
 **Zustand Store Usage**:
 ```typescript

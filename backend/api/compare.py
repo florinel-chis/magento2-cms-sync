@@ -100,9 +100,9 @@ async def get_item_diff(
     source_instance = await get_instance_or_404(db, request.source_instance_id)
     dest_instance = await get_instance_or_404(db, request.destination_instance_id)
     
-    # Load data
-    source_data = DataStorageService.load_snapshot(source_instance.id, request.data_type)
-    dest_data = DataStorageService.load_snapshot(dest_instance.id, request.data_type)
+    # Load data (async file I/O)
+    source_data = await DataStorageService.load_snapshot(source_instance.id, request.data_type)
+    dest_data = await DataStorageService.load_snapshot(dest_instance.id, request.data_type)
     
     if source_data is None:
         raise HTTPException(

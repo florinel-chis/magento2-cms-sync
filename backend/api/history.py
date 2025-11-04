@@ -1,14 +1,17 @@
 from fastapi import APIRouter, Depends, Query, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, or_
-from datetime import datetime, timedelta
+from sqlalchemy.orm import selectinload
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
+import logging
 
 from models.database import get_db
 from models.models import SyncHistory, Instance
 from models.schemas import SyncStatus
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.get("/")
@@ -23,8 +26,20 @@ async def get_sync_history(
     end_date: Optional[datetime] = None,
     db: AsyncSession = Depends(get_db)
 ):
-    """Get sync history with optional filters"""
-    query = select(SyncHistory).order_by(SyncHistory.started_at.desc())
+    """
+    Get sync history with optional filters.
+
+    Uses eager loading to prevent N+1 queries when fetching related instances.
+    """
+    # Use eager loading to prevent N+1 queries
+    query = (
+        select(SyncHistory)
+        .options(
+            selectinload(SyncHistory.source_instance),
+            selectinload(SyncHistory.destination_instance)
+        )
+        .order_by(SyncHistory.started_at.desc())
+    )
     
     # Apply filters
     filters = []
@@ -54,27 +69,19 @@ async def get_sync_history(
     
     result = await db.execute(query)
     history_items = result.scalars().all()
-    
-    # Load related instances
+
+    logger.debug(f"Fetched {len(history_items)} sync history items")
+
+    # Access preloaded instances (no additional queries!)
     history_data = []
     for item in history_items:
-        # Get source and destination instance names
-        source_result = await db.execute(
-            select(Instance).where(Instance.id == item.source_instance_id)
-        )
-        source_instance = source_result.scalar_one_or_none()
-        
-        dest_result = await db.execute(
-            select(Instance).where(Instance.id == item.destination_instance_id)
-        )
-        dest_instance = dest_result.scalar_one_or_none()
-        
+        # Instances are already loaded via selectinload - no N+1 queries!
         history_data.append({
             "id": item.id,
             "source_instance_id": item.source_instance_id,
-            "source_instance_name": source_instance.name if source_instance else "Unknown",
+            "source_instance_name": item.source_instance.name if item.source_instance else "Unknown",
             "destination_instance_id": item.destination_instance_id,
-            "destination_instance_name": dest_instance.name if dest_instance else "Unknown",
+            "destination_instance_name": item.destination_instance.name if item.destination_instance else "Unknown",
             "sync_type": item.sync_type,
             "sync_status": item.sync_status,
             "items_synced": item.items_synced,
@@ -100,7 +107,7 @@ async def get_sync_statistics(
 ):
     """Get sync statistics for dashboard"""
     # Calculate date range
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     if period == "today":
         start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
     elif period == "week":

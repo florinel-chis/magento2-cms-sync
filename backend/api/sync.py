@@ -2,7 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import Dict, Any, List
-from datetime import datetime
+from datetime import datetime, timezone
+import logging
 
 from models.database import get_db, AsyncSessionLocal
 from models.models import Instance, SyncHistory
@@ -15,6 +16,7 @@ from services.sync import SyncService
 from integrations.magento_client import MagentoClient
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 async def get_instance_or_404(db: AsyncSession, instance_id: int) -> Instance:
@@ -43,9 +45,9 @@ async def preview_sync(
     source_instance = await get_instance_or_404(db, request.source_instance_id)
     dest_instance = await get_instance_or_404(db, request.destination_instance_id)
     
-    # Load data
-    source_data = DataStorageService.load_snapshot(source_instance.id, request.data_type)
-    dest_data = DataStorageService.load_snapshot(dest_instance.id, request.data_type)
+    # Load data (async file I/O)
+    source_data = await DataStorageService.load_snapshot(source_instance.id, request.data_type)
+    dest_data = await DataStorageService.load_snapshot(dest_instance.id, request.data_type)
     
     if source_data is None:
         raise HTTPException(
@@ -144,8 +146,13 @@ async def _execute_sync(
     dest_instance: Instance,
     request: SyncRequest
 ):
-    """Execute sync operation (runs in background)"""
-    
+    """
+    Execute sync operation (runs in background).
+
+    Uses proper transaction management with rollback on errors.
+    """
+    logger.info(f"Starting sync {sync_id}: {source_instance.name} -> {dest_instance.name} ({request.data_type.value})")
+
     async with AsyncSessionLocal() as db:
         try:
             # Get sync history record
@@ -153,28 +160,31 @@ async def _execute_sync(
                 select(SyncHistory).where(SyncHistory.id == sync_id)
             )
             sync_history = result.scalar_one()
-            
+
             # Update status to in progress
             sync_history.sync_status = SyncStatus.IN_PROGRESS.value
             await db.commit()
-            
-            # Load source data
-            source_data = DataStorageService.load_snapshot(
+            logger.info(f"Sync {sync_id} status updated to IN_PROGRESS")
+
+            # Load source data (async file I/O)
+            source_data = await DataStorageService.load_snapshot(
                 source_instance.id, request.data_type
             )
-            
+
             if not source_data:
-                raise Exception("No source data found")
-            
+                raise Exception("No source data found in cache")
+
+            logger.debug(f"Loaded {len(source_data)} items from source cache")
+
             # Create Magento client for destination
             dest_client = MagentoClient(
                 base_url=str(dest_instance.url),
                 token=dest_instance.api_token
             )
-            
+
             # Perform sync
             sync_service = SyncService()
-            
+
             results = await sync_service.execute_sync(
                 source_data=source_data,
                 dest_client=dest_client,
@@ -182,26 +192,47 @@ async def _execute_sync(
                 sync_items=request.items,
                 store_view_mapping=request.store_view_mapping
             )
-            
-            # Update sync history
+
+            # Update sync history with success
             sync_history.sync_status = SyncStatus.COMPLETED.value
-            sync_history.completed_at = datetime.utcnow()
+            sync_history.completed_at = datetime.now(timezone.utc)  # Fixed: was utcnow()
             sync_history.items_synced = len([r for r in results if r["success"]])
             sync_history.items_failed = len([r for r in results if not r["success"]])
             sync_history.sync_details = {"results": results}
-            
-            # Refresh destination data
+
+            logger.info(f"Sync {sync_id} completed: {sync_history.items_synced} synced, {sync_history.items_failed} failed")
+
+            # Refresh destination data cache
             await DataStorageService.refresh_instance_data(
                 db, dest_instance, request.data_type
             )
-            
+
+            await db.commit()
+            logger.info(f"Sync {sync_id} committed successfully")
+
         except Exception as e:
-            # Update sync history with error
-            sync_history.sync_status = SyncStatus.FAILED.value
-            sync_history.completed_at = datetime.utcnow()
-            sync_history.error_message = str(e)
-        
-        await db.commit()
+            # CRITICAL: Rollback failed transaction
+            await db.rollback()
+            logger.error(f"Sync {sync_id} failed: {str(e)}", exc_info=True)
+
+            # Log error in separate transaction
+            try:
+                # Reload sync history in new transaction
+                result = await db.execute(
+                    select(SyncHistory).where(SyncHistory.id == sync_id)
+                )
+                sync_history = result.scalar_one()
+
+                sync_history.sync_status = SyncStatus.FAILED.value
+                sync_history.completed_at = datetime.now(timezone.utc)  # Fixed: was utcnow()
+                sync_history.error_message = str(e)
+
+                await db.commit()
+                logger.info(f"Sync {sync_id} error logged to database")
+
+            except Exception as commit_error:
+                await db.rollback()
+                logger.error(f"Failed to log sync error to database: {commit_error}", exc_info=True)
 
 
 @router.get("/status/{sync_id}", response_model=SyncResult)

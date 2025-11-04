@@ -1,13 +1,29 @@
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
-sqlalchemy==2.0.23
-alembic==1.12.1
-python-dotenv==1.0.0
-pydantic==2.5.0
-pydantic-settings==2.1.0
-httpx==0.25.2
-python-multipart==0.0.6
-aiosqlite==0.19.0
-python-jose[cryptography]==3.3.0
-passlib[bcrypt]==1.7.4
-greenlet==3.0.1
+# Core Framework
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
+
+# Database
+sqlalchemy==2.0.36
+alembic==1.14.0
+aiosqlite==0.20.0
+greenlet==3.1.1
+
+# Configuration
+python-dotenv==1.0.1
+
+# Validation
+pydantic==2.10.0
+pydantic-settings==2.6.1
+
+# HTTP Client
+httpx==0.28.0
+
+# File Upload
+python-multipart==0.0.18
+
+# Async File I/O (CRITICAL FIX for blocking I/O)
+aiofiles==23.2.1
+
+# Note: Removed unused dependencies
+# - python-jose[cryptography] (not used anywhere)
+# - passlib[bcrypt] (not used anywhere)

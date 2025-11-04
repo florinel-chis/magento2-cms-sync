@@ -1,5 +1,5 @@
 from typing import List, Dict, Any, Set, Tuple
-from datetime import datetime
+from datetime import datetime, timezone
 
 from models.schemas import (
     ComparisonItem, ComparisonResult, ComparisonStatus,
@@ -158,7 +158,7 @@ class ComparisonService:
             missing_in_source=missing_in_source,
             different=different,
             items=comparison_items,
-            compared_at=datetime.utcnow()
+            compared_at=datetime.now(timezone.utc)
         )
     
     @staticmethod

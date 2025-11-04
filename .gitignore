@@ -85,6 +85,7 @@ backend/data/
 backend/.env
 frontend/.env
 *.log
+backend/logs/
 backend/server.log
 frontend/frontend.log
 /tmp/
