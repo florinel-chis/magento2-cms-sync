@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Box,
   Paper,
@@ -68,22 +68,7 @@ export default function CompareBlocks() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
-  useEffect(() => {
-    // Load instances if not already loaded
-    if (instances.length === 0) {
-      loadInstances();
-    }
-  }, []);
-
-  useEffect(() => {
-    // Clear comparison when instances change
-    if (selectedSourceInstance || selectedDestInstance) {
-      setComparisonResult(null);
-      clearSelectedItems();
-    }
-  }, [selectedSourceInstance, selectedDestInstance]);
-
-  const loadInstances = async () => {
+  const loadInstances = useCallback(async () => {
     try {
       const response = await fetch('/api/instances/');
       const data = await response.json();
@@ -91,9 +76,9 @@ export default function CompareBlocks() {
     } catch (error) {
       console.error('Failed to load instances:', error);
     }
-  };
+  }, []);
 
-  const handleCompare = async () => {
+  const handleCompare = useCallback(async () => {
     if (!selectedSourceInstance || !selectedDestInstance) {
       showSnackbar('Please select both source and destination instances', 'warning');
       return;
@@ -101,7 +86,7 @@ export default function CompareBlocks() {
 
     try {
       setLoadingComparison(true);
-      
+
       const request = {
         source_instance_id: selectedSourceInstance.id,
         destination_instance_id: selectedDestInstance.id,
@@ -116,7 +101,22 @@ export default function CompareBlocks() {
     } finally {
       setLoadingComparison(false);
     }
-  };
+  }, [selectedSourceInstance, selectedDestInstance, showSnackbar, setLoadingComparison, setComparisonResult]);
+
+  useEffect(() => {
+    // Load instances if not already loaded
+    if (instances.length === 0) {
+      loadInstances();
+    }
+  }, [instances.length, loadInstances]);
+
+  useEffect(() => {
+    // Clear comparison when instances change
+    if (selectedSourceInstance || selectedDestInstance) {
+      setComparisonResult(null);
+      clearSelectedItems();
+    }
+  }, [selectedSourceInstance, selectedDestInstance, setComparisonResult, clearSelectedItems]);
 
   const handleToggleRow = (identifier: string) => {
     const newExpanded = new Set(expandedRows);
@@ -166,32 +166,36 @@ export default function CompareBlocks() {
     return <Chip label="Same" color="success" size="small" />;
   };
 
-  const filteredItems = comparisonResult?.items.filter(item => {
-    // Apply status filter
-    if (statusFilter !== 'all') {
-      if (statusFilter === 'missing' && item.destination_status !== ComparisonStatus.MISSING) {
-        return false;
+  const filteredItems = useMemo(() => {
+    return comparisonResult?.items.filter(item => {
+      // Apply status filter
+      if (statusFilter !== 'all') {
+        if (statusFilter === 'missing' && item.destination_status !== ComparisonStatus.MISSING) {
+          return false;
+        }
+        if (statusFilter === 'different' && item.source_status !== ComparisonStatus.DIFFERENT) {
+          return false;
+        }
+        if (statusFilter === 'same' && (item.source_status === ComparisonStatus.DIFFERENT || item.destination_status === ComparisonStatus.MISSING || item.source_status === ComparisonStatus.MISSING)) {
+          return false;
+        }
       }
-      if (statusFilter === 'different' && item.source_status !== ComparisonStatus.DIFFERENT) {
-        return false;
+
+      // Apply search filter
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+        return item.identifier.toLowerCase().includes(query) ||
+               item.source_data?.title?.toLowerCase().includes(query) ||
+               item.destination_data?.title?.toLowerCase().includes(query);
       }
-      if (statusFilter === 'same' && (item.source_status === ComparisonStatus.DIFFERENT || item.destination_status === ComparisonStatus.MISSING || item.source_status === ComparisonStatus.MISSING)) {
-        return false;
-      }
-    }
-    
-    // Apply search filter
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      return item.identifier.toLowerCase().includes(query) ||
-             item.source_data?.title?.toLowerCase().includes(query) ||
-             item.destination_data?.title?.toLowerCase().includes(query);
-    }
-    
-    return true;
-  }) || [];
-  
-  const paginatedItems = filteredItems.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
+
+      return true;
+    }) || [];
+  }, [comparisonResult, statusFilter, searchQuery]);
+
+  const paginatedItems = useMemo(() => {
+    return filteredItems.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
+  }, [filteredItems, page, rowsPerPage]);
 
   return (
     <Box>

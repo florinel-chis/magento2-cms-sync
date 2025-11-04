@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   Box,
   Button,
@@ -57,17 +57,7 @@ export default function Instances() {
   const [refreshingData, setRefreshingData] = useState<{ id: number; type: DataType } | null>(null);
   const [dataSnapshots, setDataSnapshots] = useState<DataSnapshotInfo>({});
 
-  useEffect(() => {
-    loadInstances();
-  }, []);
-
-  useEffect(() => {
-    if (instances.length > 0) {
-      loadDataSnapshots();
-    }
-  }, [instances]);
-
-  const loadInstances = async () => {
+  const loadInstances = useCallback(async () => {
     try {
       setLoadingInstances(true);
       const data = await instanceService.getAll();
@@ -77,16 +67,26 @@ export default function Instances() {
     } finally {
       setLoadingInstances(false);
     }
-  };
+  }, [setLoadingInstances, setInstances, showSnackbar]);
 
-  const loadDataSnapshots = async () => {
+  const loadDataSnapshots = useCallback(async () => {
     try {
       const snapshots = await instanceService.getAllDataSnapshots();
       setDataSnapshots(snapshots);
     } catch (error: any) {
       console.error('Failed to load data snapshots:', error);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadInstances();
+  }, [loadInstances]);
+
+  useEffect(() => {
+    if (instances.length > 0) {
+      loadDataSnapshots();
+    }
+  }, [instances, loadDataSnapshots]);
 
   const handleAdd = () => {
     setEditingInstance(null);
@@ -103,7 +103,7 @@ export default function Instances() {
     setDeleteDialogOpen(true);
   };
 
-  const confirmDelete = async () => {
+  const confirmDelete = useCallback(async () => {
     if (!deletingInstance) return;
 
     try {
@@ -116,13 +116,13 @@ export default function Instances() {
       setDeleteDialogOpen(false);
       setDeletingInstance(null);
     }
-  };
+  }, [deletingInstance, showSnackbar, loadInstances]);
 
-  const handleTestConnection = async (id: number) => {
+  const handleTestConnection = useCallback(async (id: number) => {
     try {
       setTestingConnection(id);
       const result = await instanceService.testConnection(id);
-      
+
       if (result.success) {
         showSnackbar('Connection test successful', 'success');
       } else {
@@ -133,13 +133,13 @@ export default function Instances() {
     } finally {
       setTestingConnection(null);
     }
-  };
+  }, [showSnackbar]);
 
-  const handleRefreshData = async (id: number, dataType: DataType) => {
+  const handleRefreshData = useCallback(async (id: number, dataType: DataType) => {
     try {
       setRefreshingData({ id, type: dataType });
       const result = await dataService.refreshInstanceData(id, dataType);
-      
+
       // Update snapshot info
       setDataSnapshots(prev => ({
         ...prev,
@@ -151,12 +151,12 @@ export default function Instances() {
           }
         }
       }));
-      
+
       showSnackbar(
         `${dataType === DataType.BLOCKS ? 'Blocks' : 'Pages'} refreshed successfully (${result.item_count} items)`,
         'success'
       );
-      
+
       // Reload all snapshots to ensure consistency
       loadDataSnapshots();
     } catch (error: any) {
@@ -164,7 +164,7 @@ export default function Instances() {
     } finally {
       setRefreshingData(null);
     }
-  };
+  }, [showSnackbar, loadDataSnapshots]);
 
   if (loadingInstances) {
     return (

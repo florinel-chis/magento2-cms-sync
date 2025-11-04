@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -38,22 +38,7 @@ export default function InstanceFormModal({
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  useEffect(() => {
-    if (open && instanceId) {
-      loadInstance();
-    } else if (open) {
-      // Reset form for new instance
-      setFormData({
-        name: '',
-        url: '',
-        api_token: '',
-        is_active: true,
-      });
-      setErrors({});
-    }
-  }, [open, instanceId]);
-
-  const loadInstance = async () => {
+  const loadInstance = useCallback(async () => {
     if (!instanceId) return;
 
     try {
@@ -71,7 +56,22 @@ export default function InstanceFormModal({
     } finally {
       setLoading(false);
     }
-  };
+  }, [instanceId, showSnackbar, onClose]);
+
+  useEffect(() => {
+    if (open && instanceId) {
+      loadInstance();
+    } else if (open) {
+      // Reset form for new instance
+      setFormData({
+        name: '',
+        url: '',
+        api_token: '',
+        is_active: true,
+      });
+      setErrors({});
+    }
+  }, [open, instanceId, loadInstance]);
 
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {};

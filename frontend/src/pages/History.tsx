@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Box,
   Paper,
@@ -79,15 +79,7 @@ export default function History() {
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
 
-  useEffect(() => {
-    loadHistory();
-  }, []);
-
-  useEffect(() => {
-    applyFilters();
-  }, [history, filterStatus, filterType, filterSource, filterDest, startDate, endDate]);
-
-  const loadHistory = async () => {
+  const loadHistory = useCallback(async () => {
     try {
       setLoading(true);
       const response = await historyService.getHistory({
@@ -101,9 +93,9 @@ export default function History() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [showSnackbar]);
 
-  const applyFilters = () => {
+  const applyFilters = useCallback(() => {
     let filtered = [...history];
 
     if (filterStatus !== 'all') {
@@ -132,7 +124,15 @@ export default function History() {
 
     setFilteredHistory(filtered);
     setPage(0);
-  };
+  }, [history, filterStatus, filterType, filterSource, filterDest, startDate, endDate]);
+
+  useEffect(() => {
+    loadHistory();
+  }, [loadHistory]);
+
+  useEffect(() => {
+    applyFilters();
+  }, [applyFilters]);
 
   const clearFilters = () => {
     setFilterStatus('all');
@@ -211,6 +211,13 @@ export default function History() {
     a.click();
   };
 
+  const paginatedHistory = useMemo(() => {
+    return filteredHistory.slice(
+      page * rowsPerPage,
+      page * rowsPerPage + rowsPerPage
+    );
+  }, [filteredHistory, page, rowsPerPage]);
+
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" mt={4}>
@@ -218,11 +225,6 @@ export default function History() {
       </Box>
     );
   }
-
-  const paginatedHistory = filteredHistory.slice(
-    page * rowsPerPage,
-    page * rowsPerPage + rowsPerPage
-  );
 
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns}>

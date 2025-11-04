@@ -1,4 +1,4 @@
-import React, { useState, useEffect, memo } from 'react';
+import React, { useState, useEffect, useCallback, memo } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -63,31 +63,25 @@ function DiffViewer({
   const [syncing, setSyncing] = useState(false);
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
 
-  useEffect(() => {
-    if (open) {
-      loadDiff();
-    }
-  }, [open, sourceInstanceId, destinationInstanceId, dataType, identifier]);
-
-  const loadDiff = async () => {
+  const loadDiff = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-      
+
       const result = await comparisonService.getItemDiff({
         source_instance_id: sourceInstanceId,
         destination_instance_id: destinationInstanceId,
         data_type: dataType,
         identifier: identifier,
       });
-      
-      
+
+
       // Compute additional properties
       const hasDifferences = result.fields.some(field => field.is_different);
-      const destinationExists = result.destination_stores.length > 0 || 
+      const destinationExists = result.destination_stores.length > 0 ||
                                result.fields.some(field => field.destination_value !== null && field.destination_value !== undefined);
-      
-      
+
+
       setDiffResult({
         ...result,
         has_differences: hasDifferences,
@@ -98,7 +92,13 @@ function DiffViewer({
     } finally {
       setLoading(false);
     }
-  };
+  }, [sourceInstanceId, destinationInstanceId, dataType, identifier]);
+
+  useEffect(() => {
+    if (open) {
+      loadDiff();
+    }
+  }, [open, loadDiff]);
 
   const formatValue = (value: any): string => {
     if (value === null || value === undefined) {
@@ -113,23 +113,23 @@ function DiffViewer({
     return String(value);
   };
 
-  const handleSync = async () => {
+  const handleSync = useCallback(async () => {
     if (!diffResult) return;
-    
+
     setConfirmDialogOpen(false);
-    
-    
+
+
     try {
       setSyncing(true);
-      
+
       // Determine if this is a create or update operation
       const action = diffResult.destination_exists ? 'update' : 'create';
-      
+
       const syncItem: SyncItem = {
         identifier: identifier,
         action: action as 'create' | 'update',
       };
-      
+
       // Execute sync based on data type
       const syncRequest = {
         source_instance_id: sourceInstanceId,
@@ -137,16 +137,16 @@ function DiffViewer({
         data_type: dataType,
         items: [syncItem],
       };
-      
-      
+
+
       const result = dataType === DataType.BLOCKS
         ? await syncService.syncBlocks(syncRequest)
         : await syncService.syncPages(syncRequest);
-      
-      
+
+
       if (result.status === 'completed' || result.status === 'pending') {
         showSnackbar(`Successfully synced ${title || identifier}`, 'success');
-        
+
         // Reload the diff to show updated state
         await loadDiff();
       } else {
@@ -157,7 +157,7 @@ function DiffViewer({
     } finally {
       setSyncing(false);
     }
-  };
+  }, [diffResult, identifier, sourceInstanceId, destinationInstanceId, dataType, showSnackbar, title, loadDiff]);
 
   const renderFieldDiff = (field: DiffField) => {
     if (!field.is_different) {

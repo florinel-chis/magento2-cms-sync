@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Paper,
@@ -84,50 +84,43 @@ export default function Sync() {
   const [selectedSync, setSelectedSync] = useState<number | null>(null);
   const [syncDetails, setSyncDetails] = useState<any>(null);
 
-  useEffect(() => {
-    loadSyncData();
-    // Poll for updates every 5 seconds
-    const interval = setInterval(loadSyncData, 5000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const loadSyncData = async () => {
+  const loadSyncData = useCallback(async () => {
     try {
       setLoading(true);
-      
+
       // Load statistics
       const statsResponse = await historyService.getStatistics('today');
       setStatistics(statsResponse);
-      
+
       // Load active syncs (pending or in_progress)
       const allSyncsResponse = await historyService.getHistory({
         skip: 0,
         limit: 50
       });
-      
+
       // Filter active syncs on the client side
       const activeSyncsFiltered = allSyncsResponse.items.filter(
         (item: SyncHistoryItem) => item.sync_status === 'pending' || item.sync_status === 'in_progress'
       ).sort((a: SyncHistoryItem, b: SyncHistoryItem) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime());
-      
+
       setActiveSyncs(activeSyncsFiltered);
-      
+
       // Load recent completed syncs (use the same response to avoid another API call)
       const completedSyncs = allSyncsResponse.items.filter(
         (item: SyncHistoryItem) => item.sync_status === 'completed' || item.sync_status === 'failed'
       ).slice(0, 5);
-      
+
       setRecentSyncs(completedSyncs);
-      
+
     } catch (error: any) {
       console.error('Failed to load sync data:', error);
       showSnackbar(error.message || 'Failed to load sync data', 'error');
     } finally {
       setLoading(false);
     }
-  };
+  }, [showSnackbar]);
 
-  const loadSyncDetails = async (syncId: number) => {
+  const loadSyncDetails = useCallback(async (syncId: number) => {
     try {
       const details = await historyService.getSyncDetails(syncId);
       setSyncDetails(details);
@@ -135,7 +128,14 @@ export default function Sync() {
     } catch (error: any) {
       showSnackbar(error.message || 'Failed to load sync details', 'error');
     }
-  };
+  }, [showSnackbar]);
+
+  useEffect(() => {
+    loadSyncData();
+    // Poll for updates every 5 seconds
+    const interval = setInterval(loadSyncData, 5000);
+    return () => clearInterval(interval);
+  }, [loadSyncData]);
 
   const getStatusIcon = (status: string) => {
     switch (status) {
