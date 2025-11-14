@@ -35,6 +35,7 @@ import syncService from '../services/syncService';
 import { DiffResult, DataType, DiffField, SyncItem } from '../types';
 import DiffDisplay from './DiffDisplay';
 import useStore from '../store';
+import { getErrorMessage } from '../utils/errorTracking';
 
 interface DiffViewerProps {
   open: boolean;
@@ -87,8 +88,8 @@ function DiffViewer({
         has_differences: hasDifferences,
         destination_exists: destinationExists
       });
-    } catch (err: any) {
-      setError(err.message || 'Failed to load diff');
+    } catch (err) {
+      setError(getErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -100,12 +101,15 @@ function DiffViewer({
     }
   }, [open, loadDiff]);
 
-  const formatValue = (value: any): string => {
+  const formatValue = (value: string | number | boolean | string[] | number[] | null | undefined): string => {
     if (value === null || value === undefined) {
       return '(empty)';
     }
     if (typeof value === 'boolean') {
       return value ? 'Yes' : 'No';
+    }
+    if (Array.isArray(value)) {
+      return JSON.stringify(value, null, 2);
     }
     if (typeof value === 'object') {
       return JSON.stringify(value, null, 2);
@@ -152,8 +156,8 @@ function DiffViewer({
       } else {
         showSnackbar(`Failed to sync: ${result.error_message || 'Unknown error'}`, 'error');
       }
-    } catch (err: any) {
-      showSnackbar(err.message || 'Failed to sync item', 'error');
+    } catch (err) {
+      showSnackbar(getErrorMessage(err), 'error');
     } finally {
       setSyncing(false);
     }
