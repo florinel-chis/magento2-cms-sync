@@ -774,8 +774,7 @@ npm run build                  # Verify build
 5. Execute sync → Check history
 6. Verify data refreshed after sync
 
-See `docs/MANUAL_TESTING_CHECKLIST.md` for complete checklist, and
-`docs/LOCAL_MAGENTO_INSTANCES.md` for running two real Magento instances locally.
+See `docs/MANUAL_TESTING_CHECKLIST.md` for complete checklist.
 
 ---
 

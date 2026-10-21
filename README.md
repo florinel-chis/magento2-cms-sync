@@ -139,8 +139,7 @@ python -m pytest
 ```
 
 The fake can also run as a standalone server for trying the UI without Magento
-(`python -m tests.magento_stub --help`). For end-to-end checks against real stores, see
-[docs/LOCAL_MAGENTO_INSTANCES.md](docs/LOCAL_MAGENTO_INSTANCES.md).
+(`python -m tests.magento_stub --help`).
 
 ## Known limitations
 

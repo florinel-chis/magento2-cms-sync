@@ -18,7 +18,6 @@
 | Document | Purpose |
 |---|---|
 | [../backend/tests/magento_stub/README.md](../backend/tests/magento_stub/README.md) | The fake Magento REST API used by the test suite and for UI demos |
-| [LOCAL_MAGENTO_INSTANCES.md](LOCAL_MAGENTO_INSTANCES.md) | Two real Magento instances on one machine for end-to-end testing and screenshots |
 | [MANUAL_TESTING_CHECKLIST.md](MANUAL_TESTING_CHECKLIST.md) | Manual QA checklist |
 | [DEVELOPMENT_WORKFLOW.md](DEVELOPMENT_WORKFLOW.md), [GIT_FLOW_GUIDE.md](GIT_FLOW_GUIDE.md) | Branching and review workflow |
 | [../CLAUDE.md](../CLAUDE.md) | Conventions and project facts for assisted development |
