@@ -118,3 +118,7 @@ test-results/
 *.temp
 .temp/
 .tmp/
+# Personal editor and assistant configuration (not part of the project)
+.claude/
+CLAUDE.md
+AGENTS.md

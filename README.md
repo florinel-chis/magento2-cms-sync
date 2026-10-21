@@ -125,6 +125,7 @@ served from a different origin than the API. Full reference:
 | [Architecture](docs/ARCHITECTURE.md) | Components, storage, comparison and sync rules, Magento REST usage |
 | [Troubleshooting](docs/TROUBLESHOOTING.md) | Symptoms, causes and fixes |
 | [Changelog](CHANGELOG.md) | What changed |
+| [Contributing](CONTRIBUTING.md) | Development setup, conventions, tests, pull requests |
 | [docs/README.md](docs/README.md) | Index of all documentation, including developer docs |
 
 ## Testing

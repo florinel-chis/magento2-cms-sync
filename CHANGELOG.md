@@ -40,6 +40,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Removed
 - The unused `API_PREFIX` setting and the never-used `comparison_cache` table.
+- Generated code-review reports, planning documents and personal tooling configuration
+  from the repository; `CONTRIBUTING.md` now holds the development guide.
 
 ### Fixed
 - The frontend's data-snapshot helper called an endpoint that does not exist.

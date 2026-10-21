@@ -13,18 +13,9 @@
 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Symptoms, causes and fixes |
 | [../CHANGELOG.md](../CHANGELOG.md) | Changes per release |
 
-## Developing and testing
+## Developing
 
 | Document | Purpose |
 |---|---|
+| [../CONTRIBUTING.md](../CONTRIBUTING.md) | Development setup, conventions, tests, branches and pull requests |
 | [../backend/tests/magento_stub/README.md](../backend/tests/magento_stub/README.md) | The fake Magento REST API used by the test suite and for UI demos |
-| [MANUAL_TESTING_CHECKLIST.md](MANUAL_TESTING_CHECKLIST.md) | Manual QA checklist |
-| [DEVELOPMENT_WORKFLOW.md](DEVELOPMENT_WORKFLOW.md), [GIT_FLOW_GUIDE.md](GIT_FLOW_GUIDE.md) | Branching and review workflow |
-| [../CLAUDE.md](../CLAUDE.md) | Conventions and project facts for assisted development |
-
-## Historical
-
-Kept for reference; they describe past assessments, not the current state.
-
-- [CODE_REVIEW_REPORT.md](CODE_REVIEW_REPORT.md), [CODE_REVIEW_AND_IMPROVEMENTS.md](CODE_REVIEW_AND_IMPROVEMENTS.md)
-- [IMPROVEMENTS_SUMMARY.md](IMPROVEMENTS_SUMMARY.md)
