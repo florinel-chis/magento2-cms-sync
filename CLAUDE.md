@@ -599,13 +599,15 @@ GET    /api/instances/data-snapshots/all  # Get cache status
 ```
 POST   /api/compare/blocks                # Compare blocks (uses cache)
 POST   /api/compare/pages                 # Compare pages (uses cache)
-POST   /api/compare/refresh/{id}          # Refresh cache from Magento
+POST   /api/compare/diff                  # Field-by-field diff of one item
+POST   /api/compare/refresh/{id}          # Refresh cache from Magento (?data_type=blocks|pages)
 ```
 
 ### Synchronization
 ```
 POST   /api/sync/preview                  # Preview changes (no mutations)
-POST   /api/sync/execute                  # Execute sync (background task)
+POST   /api/sync/blocks                   # Execute a block sync (background task)
+POST   /api/sync/pages                    # Execute a page sync (background task)
 GET    /api/sync/status/{sync_id}         # Get sync progress
 ```
 
@@ -849,12 +851,13 @@ const debouncedSearch = useDebouncedCallback(
 
 ## Additional Resources
 
-**Comprehensive Documentation**:
-- `docs/README.md` - Documentation hub (start here)
-- `docs/AI_DEVELOPMENT_GUIDE.md` - Extended AI guide
+**Documentation**:
+- `docs/README.md` - Documentation index (start here)
+- `docs/USER_GUIDE.md`, `docs/CONFIGURATION.md`, `docs/API.md`, `docs/ARCHITECTURE.md`,
+  `docs/DEPLOYMENT.md`, `docs/TROUBLESHOOTING.md` - user and operator documentation; keep
+  them in sync with the code when behaviour changes
 - `docs/DEVELOPMENT_WORKFLOW.md` - Detailed workflows
 - `docs/GIT_FLOW_GUIDE.md` - Complete Git Flow guide
-- `docs/CODE_REVIEW_REPORT.md` - Code quality assessment
 - `.claude/QUICK_REFERENCE.md` - Command cheat sheet
 
 **External Resources**:

@@ -540,8 +540,8 @@ git cherry-pick <commit-hash>
 
 - [DEVELOPMENT_WORKFLOW.md](./DEVELOPMENT_WORKFLOW.md) - Complete workflow guide
 - [IMPROVEMENTS_SUMMARY.md](./IMPROVEMENTS_SUMMARY.md) - Overview of all improvements
-- [CLAUDE.md](./CLAUDE.md) - AI development guide
-- [.claude/QUICK_REFERENCE.md](./.claude/QUICK_REFERENCE.md) - Quick command reference
+- [CLAUDE.md](../CLAUDE.md) - AI development guide
+- [.claude/QUICK_REFERENCE.md](../.claude/QUICK_REFERENCE.md) - Quick command reference
 
 ---
 

@@ -1,103 +1,120 @@
-# Deployment Guide - Magento CMS Sync Tool
+# Deployment
 
-## Prerequisites
+Two supported ways to run Magento CMS Sync: Docker Compose, or a manual install with
+uvicorn behind nginx. Either way, read [Access control](#access-control) first: the
+application has no login of its own.
 
-- Python 3.11+
-- Node.js 16+
-- nginx or Apache (for reverse proxy)
-- systemd (for service management)
-- SSL certificate (recommended)
+## Docker Compose
 
-## Production Deployment Steps
+Both compose files build two images: the backend (`python:3.11-slim`, uvicorn on port 8000)
+and the frontend (static build served by nginx, which proxies `/api` to the backend).
 
-### 1. Backend Deployment
+### Development stack: `docker-compose.yml`
 
-#### Install Dependencies
 ```bash
-cd backend
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-pip install gunicorn
+docker compose up -d --build
 ```
 
-#### Configure Environment
-Create `.env` file:
+- UI on http://localhost, API on http://localhost:8000 (also reachable through the UI origin
+  as `/api`).
+- The database and the snapshots are bind-mounted from `./backend/data`.
+
+### Production stack: `docker-compose.prod.yml`
+
 ```bash
-cp .env.example .env
-# Edit .env with production values
+PORT=8080 CORS_ORIGINS=http://localhost:8080 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-Important production settings:
-- Set `DEBUG=false`
-- Generate a secure `SECRET_KEY`
-- Configure `CORS_ORIGINS` with your frontend URL
-- Consider using PostgreSQL instead of SQLite for production
+- Publishes only the UI, on `PORT` (default 80). The API is reachable through `/api` on that
+  port; it is not published separately.
+- Data lives in the named volume `backend-data` (mounted at `/app/data`).
+- `CORS_ORIGINS` only matters if something other than the bundled UI calls the API from a
+  browser.
 
-#### Create systemd Service
-Create `/etc/systemd/system/cmssync-backend.service`:
+### Upgrading
+
+```bash
+git pull
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+Tables are created automatically on first start. There is no migration tooling: a release
+that changes an existing table documents the manual step in the changelog.
+
+### Backups
+
+Everything is under `/app/data` in the backend container: `cmssync.db` and `instances/`.
+
+```bash
+# copy the data directory out of the running container
+docker compose -f docker-compose.prod.yml cp backend:/app/data ./backup-$(date +%F)
+```
+
+Stop the backend first, or accept that a sync running at that moment may be half-recorded.
+
+## Manual installation
+
+### Backend
+
+```bash
+sudo mkdir -p /opt/cmssync && sudo chown $USER /opt/cmssync
+git clone https://github.com/florinel-chis/magento2-cms-sync.git /opt/cmssync
+cd /opt/cmssync/backend
+python3 -m venv venv && venv/bin/pip install -r requirements.txt
+cp .env.example .env            # adjust DATABASE_URL / data dir / CORS_ORIGINS if needed
+```
+
+systemd unit, `/etc/systemd/system/cmssync-backend.service`:
+
 ```ini
 [Unit]
-Description=Magento CMS Sync Backend
+Description=Magento CMS Sync backend
 After=network.target
 
 [Service]
-Type=exec
 User=www-data
 Group=www-data
 WorkingDirectory=/opt/cmssync/backend
-Environment="PATH=/opt/cmssync/backend/venv/bin"
-ExecStart=/opt/cmssync/backend/venv/bin/gunicorn main:app \
-          --workers 4 \
-          --worker-class uvicorn.workers.UvicornWorker \
-          --bind 127.0.0.1:8000 \
-          --access-logfile /var/log/cmssync/backend-access.log \
-          --error-logfile /var/log/cmssync/backend-error.log
-
+ExecStart=/opt/cmssync/backend/venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000
 Restart=always
-RestartSec=10
+RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
 ```
 
-#### Start Backend Service
 ```bash
-sudo systemctl daemon-reload
-sudo systemctl enable cmssync-backend
-sudo systemctl start cmssync-backend
+sudo chown -R www-data:www-data /opt/cmssync/backend
+sudo systemctl daemon-reload && sudo systemctl enable --now cmssync-backend
+curl http://127.0.0.1:8000/        # {"message":"Magento CMS Sync API","version":"1.0.0"}
 ```
 
-### 2. Frontend Deployment
+Run a single uvicorn worker. Syncs are background tasks inside the process, and the SQLite
+database is not meant for several writers.
 
-#### Build Production Bundle
+### Frontend
+
 ```bash
-cd frontend
-npm install
-npm run build
+cd /opt/cmssync/frontend
+npm ci
+npm run build                    # static files in build/
 ```
 
-#### Serve Static Files
-The build output in `frontend/build` can be served by nginx or any static file server.
+Leave `REACT_APP_API_URL` unset so the UI calls `/api` on its own origin.
 
-### 3. Nginx Configuration
+### nginx
 
-Create `/etc/nginx/sites-available/cmssync`:
 ```nginx
 server {
-    listen 80;
-    server_name your-domain.com;
-    return 301 https://$server_name$request_uri;
-}
-
-server {
     listen 443 ssl http2;
-    server_name your-domain.com;
+    server_name sync.example.com;
+    ssl_certificate     /etc/letsencrypt/live/sync.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/sync.example.com/privkey.pem;
 
-    ssl_certificate /path/to/ssl/cert.pem;
-    ssl_certificate_key /path/to/ssl/key.pem;
+    # see "Access control" below
+    auth_basic           "Magento CMS Sync";
+    auth_basic_user_file /etc/nginx/cmssync.htpasswd;
 
-    # Frontend
     root /opt/cmssync/frontend/build;
     index index.html;
 
@@ -105,158 +122,43 @@ server {
         try_files $uri $uri/ /index.html;
     }
 
-    # Backend API
-    location /api {
-        proxy_pass http://127.0.0.1:8000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
+    location /api/ {
+        proxy_pass http://127.0.0.1:8000/api/;
         proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_cache_bypass $http_upgrade;
+        proxy_read_timeout 600s;   # refreshes and syncs of large catalogs take a while
     }
 
-    # API Documentation
-    location /docs {
-        proxy_pass http://127.0.0.1:8000/docs;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-    }
-
-    location /openapi.json {
-        proxy_pass http://127.0.0.1:8000/openapi.json;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-    }
+    # optional: interactive API docs
+    location /docs    { proxy_pass http://127.0.0.1:8000/docs; }
+    location /openapi.json { proxy_pass http://127.0.0.1:8000/openapi.json; }
+}
+server {
+    listen 80;
+    server_name sync.example.com;
+    return 301 https://$host$request_uri;
 }
 ```
 
-Enable the site:
-```bash
-sudo ln -s /etc/nginx/sites-available/cmssync /etc/nginx/sites-enabled/
-sudo nginx -t
-sudo systemctl reload nginx
-```
+## Access control
 
-### 4. Database Backup
+The UI and the API have no authentication. Anyone who can reach them can read the stored
+Magento tokens and write to the connected stores. At minimum:
 
-Set up automated backups for the SQLite database:
-```bash
-# Create backup script at /opt/cmssync/backup.sh
-#!/bin/bash
-BACKUP_DIR="/opt/cmssync/backups"
-DB_PATH="/opt/cmssync/backend/cmssync.db"
-TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+- Serve the application only on a private network or VPN, or
+- Require a login at the reverse proxy (`htpasswd -c /etc/nginx/cmssync.htpasswd admin` for
+  the nginx example above), and
+- Use HTTPS between the browser and the tool, and between the tool and Magento.
 
-mkdir -p $BACKUP_DIR
-cp $DB_PATH "$BACKUP_DIR/cmssync_$TIMESTAMP.db"
+Give each Magento token only the four ACL resources the tool needs (see the User Guide).
 
-# Keep only last 30 days of backups
-find $BACKUP_DIR -name "cmssync_*.db" -mtime +30 -delete
-```
+## Health and monitoring
 
-Add to crontab:
-```bash
-0 2 * * * /opt/cmssync/backup.sh
-```
-
-### 5. Monitoring
-
-#### Application Logs
-- Backend: `/var/log/cmssync/backend-*.log`
-- Nginx: `/var/log/nginx/access.log` and `error.log`
-
-#### Health Monitoring
-Set up monitoring with the health check endpoint:
-```bash
-curl http://localhost:8000/api/health
-```
-
-Consider using tools like:
-- Prometheus + Grafana for metrics
-- ELK stack for log aggregation
-- Uptime monitoring services
-
-### 6. Security Hardening
-
-1. **API Token Encryption**: Implement encryption for stored API tokens
-2. **Rate Limiting**: Add rate limiting to prevent abuse
-3. **Input Validation**: Ensure all inputs are properly validated
-4. **HTTPS Only**: Force all traffic through HTTPS
-5. **Firewall Rules**: Only expose necessary ports (80, 443)
-
-### 7. Performance Optimization
-
-1. **Database**: Consider migrating to PostgreSQL for better performance
-2. **Caching**: Implement Redis for caching frequently accessed data
-3. **CDN**: Use a CDN for static assets
-4. **Compression**: Enable gzip compression in nginx
-5. **Connection Pooling**: Configure database connection pooling
-
-## Docker Deployment (Alternative)
-
-Create `docker-compose.prod.yml`:
-```yaml
-version: '3.8'
-
-services:
-  backend:
-    build: ./backend
-    environment:
-      - DATABASE_URL=postgresql://user:pass@db:5432/cmssync
-      - CORS_ORIGINS=["https://your-domain.com"]
-    depends_on:
-      - db
-    volumes:
-      - ./backend/data:/app/data
-    restart: always
-
-  frontend:
-    build: ./frontend
-    environment:
-      - REACT_APP_API_URL=https://your-domain.com
-    restart: always
-
-  nginx:
-    image: nginx:alpine
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf
-      - ./ssl:/etc/nginx/ssl
-    depends_on:
-      - backend
-      - frontend
-    restart: always
-
-  db:
-    image: postgres:15
-    environment:
-      - POSTGRES_DB=cmssync
-      - POSTGRES_USER=user
-      - POSTGRES_PASSWORD=pass
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    restart: always
-
-volumes:
-  postgres_data:
-```
-
-## Maintenance
-
-### Regular Tasks
-1. Monitor disk space for JSON data storage
-2. Clean up old sync history records
-3. Update dependencies regularly
-4. Review and rotate logs
-5. Test backup restoration procedures
-
-### Scaling Considerations
-1. **Horizontal Scaling**: Use a load balancer for multiple backend instances
-2. **Database Scaling**: Implement read replicas for heavy read loads
-3. **Storage Scaling**: Consider object storage (S3) for JSON data files
-4. **Queue System**: Add Celery/RabbitMQ for async processing of large syncs
+- `GET /` on the backend returns a JSON greeting; the Docker image uses it as its health
+  check (`docker ps` shows `healthy`).
+- Backend logs: `backend/logs/app.log` and `backend/logs/errors.log` (rotated at 10 MB, 5
+  files kept), relative to the working directory, plus uvicorn's access log on stdout
+  (`docker compose logs backend`, or `journalctl -u cmssync-backend`).
+- Disk: snapshots are small JSON files, but one per instance and type is rewritten on each
+  refresh; the SQLite database grows with the sync history.

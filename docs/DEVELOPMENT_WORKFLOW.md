@@ -654,7 +654,7 @@ code .claude/commands/review.md
 
 - [Claude Code Subagents Documentation](https://docs.claude.com/en/docs/claude-code/sub-agents)
 - [Claude Code Slash Commands Documentation](https://docs.claude.com/en/docs/claude-code/slash-commands)
-- [Project CLAUDE.md](./CLAUDE.md) - AI development guide
+- [Project CLAUDE.md](../CLAUDE.md) - AI development guide
 - [README.md](./README.md) - User documentation
 
 ## 🤝 Contributing
