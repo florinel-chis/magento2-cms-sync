@@ -78,12 +78,8 @@ async def test_full_block_sync_flow(api, source_magento, dest_magento):
 
     again = (await api.post("/api/compare/blocks", json={
         "source_instance_id": src_id, "destination_instance_id": dst_id, "force_refresh": True})).json()
-    assert again["missing_in_destination"] == 0
-    # ComparisonService also compares creation_time/update_time, which Magento sets
-    # server-side, so synced items may still be reported "different" by timestamp only.
-    for item in again["items"]:
-        if item["identifier"] != "dest_only_block":
-            assert set(item["differences"] or []) <= {"creation_time", "update_time"}, item
+    assert (again["different"], again["missing_in_destination"]) == (0, 0), [
+        (i["identifier"], i["differences"]) for i in again["items"] if i["differences"]]
 
 
 async def test_full_page_sync_flow(api, source_magento, dest_magento):
@@ -164,3 +160,20 @@ async def test_sync_marks_history_failed_when_destination_is_down(api, dest_mage
     status = (await api.get(f"/api/sync/status/{started.json()['sync_id']}")).json()
     assert status["status"] == "failed"
     assert "401" in status["error_message"]
+
+
+async def test_comparison_ignores_server_timestamps_and_detects_active_flag(api, source_magento, dest_magento):
+    """Timestamps differ on every real Magento pair; the active flag is spelled 'active' by Magento."""
+    src_id, dst_id = await _create_instances(api)
+    dest_magento.clock = lambda: "2031-01-01 00:00:00"
+    dest_magento.blocks[1]["content"] = source_magento.blocks[1]["content"]   # same content, other clock
+    dest_magento.blocks[1]["update_time"] = "2031-01-01 00:00:00"
+    source_magento.blocks[1]["active"] = False                              # but a real difference
+    body = (await api.post("/api/compare/blocks", json={
+        "source_instance_id": src_id, "destination_instance_id": dst_id, "force_refresh": True})).json()
+    footer = next(i for i in body["items"] if i["identifier"] == "footer_links_block")
+    assert footer["differences"] == ["active"]
+    diff = (await api.post("/api/compare/diff", json={
+        "source_instance_id": src_id, "destination_instance_id": dst_id, "data_type": "blocks",
+        "identifier": "footer_links_block"})).json()
+    assert {f["field_name"] for f in diff["fields"]} == {"title", "content", "active", "sort_order"}
