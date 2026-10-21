@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, memo } from 'react';
+import React, { useState, useEffect, useCallback, useRef, memo } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -32,10 +32,13 @@ import {
 } from '@mui/icons-material';
 import comparisonService from '../services/comparisonService';
 import syncService from '../services/syncService';
-import { DiffResult, DataType, DiffField, SyncItem } from '../types';
+import { DiffResult, DataType, DiffField, SyncItem, SyncResult } from '../types';
 import DiffDisplay from './DiffDisplay';
 import useStore from '../store';
 import { getErrorMessage } from '../utils/errorTracking';
+
+const SYNC_POLL_INTERVAL_MS = 2000;
+const SYNC_POLL_TIMEOUT_MS = 5 * 60 * 1000;
 
 interface DiffViewerProps {
   open: boolean;
@@ -63,6 +66,22 @@ function DiffViewer({
   const [viewMode, setViewMode] = useState<'table' | 'split' | 'unified'>('table');
   const [syncing, setSyncing] = useState(false);
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+  // True while the dialog is open and mounted; polling stops as soon as it flips to false.
+  // The session counter changes on every open/close, so a poll started in an earlier
+  // session can never resume when the dialog is reopened for another item.
+  const pollingActive = useRef(false);
+  const syncSession = useRef(0);
+
+  useEffect(() => {
+    syncSession.current += 1;
+    pollingActive.current = open;
+    if (!open) {
+      setSyncing(false);
+    }
+    return () => {
+      pollingActive.current = false;
+    };
+  }, [open]);
 
   const loadDiff = useCallback(async () => {
     try {
@@ -123,6 +142,9 @@ function DiffViewer({
     setConfirmDialogOpen(false);
 
 
+    const session = syncSession.current;
+    const stillActive = () => pollingActive.current && syncSession.current === session;
+
     try {
       setSyncing(true);
 
@@ -143,23 +165,55 @@ function DiffViewer({
       };
 
 
-      const result = dataType === DataType.BLOCKS
+      const started = dataType === DataType.BLOCKS
         ? await syncService.syncBlocks(syncRequest)
         : await syncService.syncPages(syncRequest);
 
-
-      if (result.status === 'completed' || result.status === 'pending') {
-        showSnackbar(`Successfully synced ${title || identifier}`, 'success');
-
-        // Reload the diff to show updated state
-        await loadDiff();
-      } else {
-        showSnackbar(`Failed to sync: ${result.error_message || 'Unknown error'}`, 'error');
+      // The sync runs in the background: poll until it reaches a terminal status
+      let result: SyncResult = started;
+      const deadline = Date.now() + SYNC_POLL_TIMEOUT_MS;
+      while (result.status !== 'completed' && result.status !== 'failed') {
+        if (Date.now() >= deadline) {
+          if (stillActive()) {
+            showSnackbar(
+              `Sync of ${title || identifier} is still running; check the Sync page for its status`,
+              'warning'
+            );
+          }
+          return;
+        }
+        await new Promise<void>(resolve => setTimeout(resolve, SYNC_POLL_INTERVAL_MS));
+        if (!stillActive()) return;
+        result = await syncService.getSyncStatus(started.sync_id);
       }
+
+      if (!stillActive()) return;
+
+      if (result.status === 'failed') {
+        showSnackbar(`Failed to sync: ${result.error_message || 'Unknown error'}`, 'error');
+      } else {
+        const detail = result.details?.find(d => d.identifier === identifier) ?? result.details?.[0];
+        const itemFailed = result.items_failed > 0 || (detail !== undefined && !detail.success);
+        if (itemFailed) {
+          showSnackbar(
+            `Failed to sync ${title || identifier}: ${detail?.error || detail?.message || result.error_message || 'Unknown error'}`,
+            'error'
+          );
+        } else {
+          showSnackbar(`Synced ${title || identifier} to destination`, 'success');
+        }
+      }
+
+      // Reload the diff to show updated state
+      await loadDiff();
     } catch (err) {
-      showSnackbar(getErrorMessage(err), 'error');
+      if (stillActive()) {
+        showSnackbar(getErrorMessage(err), 'error');
+      }
     } finally {
-      setSyncing(false);
+      if (stillActive()) {
+        setSyncing(false);
+      }
     }
   }, [diffResult, identifier, sourceInstanceId, destinationInstanceId, dataType, showSnackbar, title, loadDiff]);
 

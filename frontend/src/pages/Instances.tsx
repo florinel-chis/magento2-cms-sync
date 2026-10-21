@@ -129,7 +129,13 @@ export default function Instances() {
       const result = await instanceService.testConnection(id);
 
       if (result.success) {
-        showSnackbar('Connection test successful', 'success');
+        const storeViewCount = Array.isArray(result.store_views) ? result.store_views.length : null;
+        showSnackbar(
+          storeViewCount !== null
+            ? `Connection successful (${storeViewCount} store view${storeViewCount === 1 ? '' : 's'})`
+            : 'Connection successful',
+          'success'
+        );
       } else {
         showSnackbar(result.message, 'error');
       }

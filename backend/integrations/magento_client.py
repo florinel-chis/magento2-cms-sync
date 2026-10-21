@@ -6,6 +6,10 @@ import json
 
 from config import settings
 
+# Tests set this to an in-process transport (see tests/magento_stub/transport.py);
+# None means httpx's default network transport.
+transport_override: Optional[httpx.AsyncBaseTransport] = None
+
 
 class MagentoClient:
     def __init__(self, base_url: str, token: str):
@@ -27,7 +31,7 @@ class MagentoClient:
     ) -> Any:
         url = urljoin(f"{self.base_url}/rest/V1/", endpoint.lstrip('/'))
         
-        async with httpx.AsyncClient(timeout=settings.magento_timeout) as client:
+        async with httpx.AsyncClient(timeout=settings.magento_timeout, transport=transport_override) as client:
             try:
                 response = await client.request(
                     method=method,

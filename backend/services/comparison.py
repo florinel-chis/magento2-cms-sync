@@ -34,15 +34,14 @@ class ComparisonService:
         
         # Fields to compare based on data type
         if data_type == DataType.BLOCKS:
-            compare_fields = [
-                "title", "content", "is_active", "creation_time",
-                "update_time", "sort_order"
-            ]
+            # Magento's REST output exposes the active flag as "active"; creation_time and
+            # update_time are server-generated and never match across instances.
+            compare_fields = ["title", "content", "active", "sort_order"]
         else:  # DataType.PAGES
             compare_fields = [
                 "title", "content", "content_heading", "page_layout",
                 "meta_title", "meta_keywords", "meta_description",
-                "is_active", "sort_order", "layout_update_xml",
+                "active", "sort_order", "layout_update_xml",
                 "custom_theme", "custom_root_template", "custom_layout_update_xml"
             ]
         
@@ -173,15 +172,14 @@ class ComparisonService:
         
         # Get fields to compare
         if data_type == DataType.BLOCKS:
-            compare_fields = [
-                "title", "content", "is_active", "creation_time",
-                "update_time", "sort_order"
-            ]
+            # Magento's REST output exposes the active flag as "active"; creation_time and
+            # update_time are server-generated and never match across instances.
+            compare_fields = ["title", "content", "active", "sort_order"]
         else:  # DataType.PAGES
             compare_fields = [
                 "title", "content", "content_heading", "page_layout",
                 "meta_title", "meta_keywords", "meta_description",
-                "is_active", "sort_order", "layout_update_xml",
+                "active", "sort_order", "layout_update_xml",
                 "custom_theme", "custom_root_template", "custom_layout_update_xml"
             ]
         

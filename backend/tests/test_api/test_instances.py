@@ -1,6 +1,6 @@
 """Integration tests for instances API."""
 import pytest
-from httpx import AsyncClient
+from httpx import ASGITransport, AsyncClient
 from fastapi import status
 
 from main import app
@@ -19,7 +19,7 @@ class TestInstancesAPI:
 
         app.dependency_overrides[get_db] = override_get_db
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.post(
                 "/api/instances/",
                 json={
@@ -46,7 +46,7 @@ class TestInstancesAPI:
 
         app.dependency_overrides[get_db] = override_get_db
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.post(
                 "/api/instances/",
                 json={
@@ -67,7 +67,7 @@ class TestInstancesAPI:
 
         app.dependency_overrides[get_db] = override_get_db
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.get("/api/instances/")
 
         assert response.status_code == status.HTTP_200_OK
@@ -84,7 +84,7 @@ class TestInstancesAPI:
 
         app.dependency_overrides[get_db] = override_get_db
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.get(f"/api/instances/{sample_instance.id}")
 
         assert response.status_code == status.HTTP_200_OK
@@ -101,7 +101,7 @@ class TestInstancesAPI:
 
         app.dependency_overrides[get_db] = override_get_db
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             response = await client.put(
                 f"/api/instances/{sample_instance.id}",
                 json={"name": "Updated Name"}
@@ -122,7 +122,7 @@ class TestInstancesAPI:
 
         instance_id = sample_instance.id
 
-        async with AsyncClient(app=app, base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             # Delete
             response = await client.delete(f"/api/instances/{instance_id}")
             assert response.status_code == status.HTTP_204_NO_CONTENT

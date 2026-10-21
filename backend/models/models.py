@@ -53,20 +53,3 @@ class SyncHistory(Base):
     # Relationships
     source_instance = relationship("Instance", foreign_keys=[source_instance_id], overlaps="sync_history")
     destination_instance = relationship("Instance", foreign_keys=[destination_instance_id], overlaps="sync_history")
-
-
-class ComparisonCache(Base):
-    __tablename__ = "comparison_cache"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    source_instance_id = Column(Integer, ForeignKey("instances.id"), nullable=False)
-    destination_instance_id = Column(Integer, ForeignKey("instances.id"), nullable=False)
-    comparison_type = Column(String(50), nullable=False)  # 'blocks' or 'pages'
-    cache_key = Column(String(255), unique=True, nullable=False)
-    result_summary = Column(JSON, nullable=False)  # Summary statistics
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    expires_at = Column(DateTime, nullable=False)
-    
-    # Relationships
-    source_instance = relationship("Instance", foreign_keys=[source_instance_id], overlaps="sync_history")
-    destination_instance = relationship("Instance", foreign_keys=[destination_instance_id], overlaps="sync_history")

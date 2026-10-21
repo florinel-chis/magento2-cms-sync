@@ -41,8 +41,12 @@ class InstanceUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
-class Instance(InstanceBase):
+class Instance(BaseModel):
+    """Instance as returned by the API: the token is write-only and never echoed back."""
     id: int
+    name: str
+    url: HttpUrl
+    is_active: bool
     created_at: datetime
     updated_at: datetime
     
@@ -105,8 +109,8 @@ class ComparisonItem(BaseModel):
 
 
 class ComparisonResult(BaseModel):
-    source_instance: Instance
-    destination_instance: Instance
+    source_instance: Optional[Instance] = None
+    destination_instance: Optional[Instance] = None
     data_type: DataType
     total_source: int
     total_destination: int
@@ -152,8 +156,8 @@ class DiffResult(BaseModel):
     identifier: str
     data_type: DataType
     fields: List[DiffField]
-    source_stores: List[str] = []
-    destination_stores: List[str] = []
+    source_stores: List[Union[int, str]] = []
+    destination_stores: List[Union[int, str]] = []
 
 
 # Sync Schemas
@@ -176,7 +180,7 @@ class SyncItem(BaseModel):
             # Define valid fields for both blocks and pages
             valid_fields = {
                 # Common fields
-                'title', 'content', 'is_active', 'store_id',
+                'title', 'content', 'active', 'is_active', 'store_id',
                 # Block-specific
                 'identifier', 'sort_order',
                 # Page-specific

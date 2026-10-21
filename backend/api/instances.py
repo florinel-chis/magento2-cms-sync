@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, delete, or_
 from typing import List, Dict
 import httpx
 from pathlib import Path
@@ -8,10 +8,11 @@ import shutil
 import logging
 
 from models.database import get_db
-from models.models import Instance as InstanceModel, DataSnapshot
+from models.models import Instance as InstanceModel, DataSnapshot, SyncHistory
 from models.schemas import Instance, InstanceCreate, InstanceUpdate, InstanceTestResult
 from integrations.magento_client import MagentoClient
 from config import settings
+from utils.encryption import encrypt_token, decrypt_stored_token
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -49,7 +50,7 @@ async def get_instance(
     return instance
 
 
-@router.post("/", response_model=Instance)
+@router.post("/", response_model=Instance, status_code=status.HTTP_201_CREATED)
 async def create_instance(
     instance_data: InstanceCreate,
     db: AsyncSession = Depends(get_db)
@@ -68,6 +69,7 @@ async def create_instance(
     instance_dict = instance_data.model_dump()
     # Convert HttpUrl to string
     instance_dict['url'] = str(instance_data.url)
+    instance_dict['api_token'] = encrypt_token(instance_data.api_token)
     instance = InstanceModel(**instance_dict)
 
     try:
@@ -126,6 +128,8 @@ async def update_instance(
             # Convert HttpUrl to string if updating URL
             if field == 'url' and value is not None:
                 value = str(value)
+            if field == 'api_token' and value is not None:
+                value = encrypt_token(value)
             setattr(instance, field, value)
 
         await db.commit()
@@ -143,7 +147,7 @@ async def update_instance(
         )
 
 
-@router.delete("/{instance_id}")
+@router.delete("/{instance_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_instance(
     instance_id: int,
     db: AsyncSession = Depends(get_db)
@@ -160,6 +164,11 @@ async def delete_instance(
         )
     
     try:
+        # Sync history referencing this instance on either side goes with it
+        await db.execute(delete(SyncHistory).where(or_(
+            SyncHistory.source_instance_id == instance_id,
+            SyncHistory.destination_instance_id == instance_id,
+        )))
         # Delete instance from database first
         await db.delete(instance)
         await db.commit()
@@ -175,7 +184,7 @@ async def delete_instance(
                 logger.warning(f"Failed to delete directory for instance {instance_id}: {dir_error}")
 
         logger.info(f"Deleted instance {instance_id}: {instance.name}")
-        return {"message": "Instance deleted successfully"}
+        return None
 
     except Exception as e:
         await db.rollback()
@@ -205,7 +214,7 @@ async def test_instance_connection(
     try:
         client = MagentoClient(
             base_url=str(instance.url),
-            token=instance.api_token
+            token=decrypt_stored_token(instance.api_token)
         )
         
         # Test connection by fetching store views

@@ -135,6 +135,20 @@ def encrypt_token(token: str) -> str:
     return get_encryption().encrypt(token)
 
 
+def decrypt_stored_token(stored: str) -> str:
+    """
+    Return the plaintext for a token read from the database.
+
+    Rows written before encryption was introduced hold the plaintext itself; they are
+    accepted (with a warning) until scripts/encrypt_existing_tokens.py has run.
+    """
+    try:
+        return get_encryption().decrypt(stored)
+    except ValueError:
+        logger.warning("Instance token is stored unencrypted; run scripts/encrypt_existing_tokens.py")
+        return stored
+
+
 def decrypt_token(encrypted_token: str) -> str:
     """Convenience function to decrypt a token."""
     return get_encryption().decrypt(encrypted_token)

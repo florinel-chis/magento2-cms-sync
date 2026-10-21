@@ -11,20 +11,57 @@ const api: AxiosInstance = axios.create({
   },
 });
 
-// Request interceptor
-api.interceptors.request.use(
-  (config) => {
-    // Add auth token if available (for future use)
-    const token = localStorage.getItem('auth_token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+// Shape of a FastAPI validation error entry (HTTP 422)
+interface ValidationErrorEntry {
+  loc?: Array<string | number>;
+  msg?: string;
+  type?: string;
+}
+
+interface ErrorResponseBody {
+  detail?: unknown;
+  message?: unknown;
+}
+
+const isValidationErrorEntry = (value: unknown): value is ValidationErrorEntry =>
+  typeof value === 'object' && value !== null && ('msg' in value || 'loc' in value);
+
+// Turn whatever the backend put in the response body into a readable message
+const extractErrorMessage = (data: unknown): string => {
+  if (typeof data === 'object' && data !== null) {
+    const body = data as ErrorResponseBody;
+    const detail = body.detail;
+
+    if (typeof detail === 'string' && detail) {
+      return detail;
     }
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
+
+    if (Array.isArray(detail)) {
+      // FastAPI 422: [{loc: [...], msg: "...", type: "..."}]
+      const parts = detail.map((entry: unknown) => {
+        if (isValidationErrorEntry(entry)) {
+          const loc = Array.isArray(entry.loc) ? entry.loc.join('.') : '';
+          const msg = entry.msg ?? JSON.stringify(entry);
+          return loc ? `${loc}: ${msg}` : msg;
+        }
+        return typeof entry === 'string' ? entry : JSON.stringify(entry);
+      });
+      if (parts.length > 0) {
+        return parts.join('; ');
+      }
+    }
+
+    if (typeof detail === 'object' && detail !== null) {
+      return JSON.stringify(detail);
+    }
+
+    if (typeof body.message === 'string' && body.message) {
+      return body.message;
+    }
   }
-);
+
+  return 'An error occurred';
+};
 
 // Response interceptor
 api.interceptors.response.use(
@@ -34,18 +71,7 @@ api.interceptors.response.use(
   (error: AxiosError) => {
     if (error.response) {
       // Server responded with error status
-      if (error.response.status === 401) {
-        // Handle unauthorized access
-        localStorage.removeItem('auth_token');
-        window.location.href = '/login';
-      }
-      
-      // Extract error message
-      const message = (error.response.data as any)?.detail || 
-                     (error.response.data as any)?.message || 
-                     'An error occurred';
-      
-      return Promise.reject(new Error(message));
+      return Promise.reject(new Error(extractErrorMessage(error.response.data)));
     } else if (error.request) {
       // Request was made but no response received
       return Promise.reject(new Error('Network error. Please check your connection.'));

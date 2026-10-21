@@ -2,7 +2,8 @@ export interface Instance {
   id: number;
   name: string;
   url: string;
-  api_token: string;
+  // Never returned by the API (GET /instances/ and /instances/{id} omit it); only sent on create/update
+  api_token?: string;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -14,6 +15,18 @@ export interface DataSnapshot {
   item_count: number;
   created_at: string;
   file_path: string;
+}
+
+// Latest snapshot summary per data type, as returned by GET /instances/{id}/data-snapshots
+export interface DataSnapshotSummary {
+  count: number;
+  last_updated: string;
+}
+
+export interface InstanceDataSnapshots {
+  instance_id: number;
+  blocks: DataSnapshotSummary | null;
+  pages: DataSnapshotSummary | null;
 }
 
 export interface InstanceCreate {
@@ -47,13 +60,17 @@ export interface StoreView {
 }
 
 // Magento CMS content types
+// Shapes follow the Magento 2 REST output (cms-data-block-interface / cms-data-page-interface):
+// the active flag is emitted as `active`; `is_active`, `store_id` and `url_key` only exist on
+// installs that extend the API, so they are optional.
 export interface CMSBlock {
   id: number;
   identifier: string;
   title: string;
   content: string;
-  is_active: boolean;
-  store_id: number[];
+  active?: boolean;
+  is_active?: boolean;
+  store_id?: number[];
   creation_time?: string;
   update_time?: string;
 }
@@ -62,11 +79,12 @@ export interface CMSPage {
   id: number;
   identifier: string;
   title: string;
-  url_key: string;
+  url_key?: string;
   content: string;
   content_heading?: string;
-  is_active: boolean;
-  store_id: number[];
+  active?: boolean;
+  is_active?: boolean;
+  store_id?: number[];
   page_layout?: string;
   meta_title?: string;
   meta_keywords?: string;
@@ -163,10 +181,13 @@ export interface SyncPreview {
   updates: number;
 }
 
+// One entry per synced item, as returned by /api/sync/status/{id}
 export interface SyncDetailItem {
   identifier: string;
-  status: 'success' | 'failed';
-  message?: string;
+  action?: 'create' | 'update' | string;
+  success: boolean;
+  message?: string | null;
+  error?: string | null;
 }
 
 export interface SyncResult {

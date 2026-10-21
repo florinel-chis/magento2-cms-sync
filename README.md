@@ -1,293 +1,164 @@
 # Magento CMS Sync
 
-A powerful web-based tool for synchronizing CMS content (blocks and pages) between multiple Magento 2 instances. Built with FastAPI (Python) backend and React (TypeScript) frontend.
+**Compare and synchronise CMS blocks and pages between Magento 2 stores, from a browser.**
+
+Magento CMS Sync connects to two or more Magento 2 instances through their REST API, caches
+their CMS blocks and pages, shows what differs, and pushes the items you select from a
+source store to a destination store. Typical uses: promoting content from staging to
+production, keeping a group of stores aligned, or auditing drift between environments.
+
+![Compare CMS pages between two instances](doc/magento2-cms-sync.png)
 
 ## Features
 
-- 🔄 **Bi-directional Sync**: Compare and sync CMS blocks and pages between Magento instances
-- 📊 **Visual Comparison**: Side-by-side diff view with syntax highlighting
-- 🎯 **Selective Sync**: Choose specific items to sync with granular control
-- 📈 **Real-time Dashboard**: Monitor sync operations with live statistics
-- 🔍 **Advanced Filtering**: Filter by status, type, date range, and more
-- 📜 **Comprehensive History**: Track all sync operations with detailed logs
-- 🔐 **Secure API Integration**: Connect to Magento instances using REST API tokens
-- 🚀 **High Performance**: Asynchronous operations with background task processing
+- **Instances**: register any number of Magento 2 stores with a REST token, test the
+  connection, refresh their CMS content on demand and see how many items are cached.
+- **Compare**: one row per block or page with its status (same, different, missing in
+  destination, only in destination), a status filter and free-text search.
+- **Diff viewer**: field-by-field table, or split and unified (word-level) diffs of the content.
+- **Sync wizard**: pick items, preview how many creates and updates will happen, execute,
+  and get a per-item result.
+- **History**: every sync with status, counts, duration and per-item messages; CSV export.
+- **Conservative by design**: a sync only creates or updates items in the destination. It
+  never deletes anything and never writes to the source.
 
-![Magento CMS Sync Screenshot](doc/magento2-cms-sync.png)
+## Screenshots
 
-## Quick Start with Docker
+Taken from the running UI against two real Magento 2.4.9 instances.
+
+| | |
+|---|---|
+| **Instances** with cached block/page counts and connection test<br>![Instances](doc/instances.png) | **Compare pages**, filtered to the items that differ<br>![Different items](doc/compare-pages-different.png) |
+| **Diff viewer** (table, split or unified)<br>![Diff viewer](doc/magento2-cms-sync-diff.png) | **Sync wizard, step 1**: pick creates and updates<br>![Select items](doc/sync-select-items.png) |
+| **Sync wizard, step 2**: preview the changeset<br>![Preview](doc/sync-preview.png) | **Sync wizard, step 3**: per-item result<br>![Result](doc/sync-result.png) |
+| **After the sync**: nothing left to do<br>![After sync](doc/compare-pages-after-sync.png) | **History** with filters and CSV export<br>![History](doc/history.png) |
+
+## How it works
+
+1. **Snapshots.** Each instance's blocks and pages are fetched through the Magento REST API
+   (`cmsBlock/search`, `cmsPage/search`, 100 items per request) and cached as JSON files on
+   the server. Comparisons read these snapshots; refresh an instance to pull new content.
+2. **Matching.** Items are matched across instances by their Magento `identifier` (the URL
+   key of a page, the identifier of a block).
+3. **What counts as different.** Blocks: title, content, active, sort order. Pages: title,
+   content, content heading, page layout, meta title/keywords/description, active, sort
+   order, layout update XML and the custom theme/template fields. Creation and update
+   timestamps are not compared, because Magento sets them on each server.
+4. **Sync.** Items missing in the destination are created; items that differ are updated in
+   place using the destination's own id. The source copy comes from the cached snapshot; the
+   destination is read live at sync time so ids are current. Afterwards the destination
+   snapshot is refreshed automatically.
+
+Details, including the exact Magento REST calls and permissions, are in
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+## Requirements
+
+- One or more **Magento 2.4.x** stores whose REST API is reachable from the machine running
+  this tool, each with a token granting `Magento_Cms::block`, `Magento_Cms::page`,
+  `Magento_Cms::save` and `Magento_Backend::store` (see the
+  [User Guide](docs/USER_GUIDE.md#before-you-start-a-magento-api-token)).
+- To run the tool: **Docker** with Compose, or **Python 3.11+** and **Node.js 18+**.
+
+## Quick start with Docker
 
 ```bash
-# Clone the repository
-git clone https://github.com/yourusername/magento-cms-sync.git
-cd magento-cms-sync
-
-# Start with Docker Compose
-docker-compose up -d
-
-# Access the application
-# Frontend: http://localhost:3000
-# Backend API: http://localhost:8000
-# API Docs: http://localhost:8000/docs
+git clone https://github.com/florinel-chis/magento2-cms-sync.git
+cd magento2-cms-sync
+# key used to encrypt Magento API tokens in the database; keep it with your backups
+echo "ENCRYPTION_KEY=$(python3 -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')" > .env
+docker compose up -d --build
 ```
 
-## Manual Installation
+- UI: http://localhost (nginx serves the built frontend and proxies `/api` to the backend)
+- API and interactive docs: http://localhost:8000/docs
+- Data (SQLite database and cached snapshots) lives in `./backend/data`
 
-### Prerequisites
+`docker-compose.prod.yml` is the same stack with a named volume instead of the bind mount
+and the frontend port taken from `PORT`. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
-- Python 3.11+
-- Node.js 18+
-- npm or yarn
+## Running without Docker
 
-### Backend Setup
+Backend (FastAPI). Tables are created on first start; there is no migration step.
 
 ```bash
 cd backend
-
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
+python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
-
-# Run database migrations
-alembic upgrade head
-
-# Start the server
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+export ENCRYPTION_KEY=$(python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')
+uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
-### Frontend Setup
+Frontend (React) in development, with the dev server proxying `/api` to port 8000:
 
 ```bash
 cd frontend
-
-# Install dependencies
 npm install
-
-# Start the development server
-npm start
+PORT=3001 npm start          # http://localhost:3001
 ```
+
+For production, `npm run build` produces static files in `frontend/build`; serve them with
+any web server that proxies `/api` to the backend (nginx example in
+[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)).
 
 ## Configuration
 
-### Backend Environment Variables
+The backend reads these environment variables (or a `backend/.env` file). Defaults in bold.
 
-Create a `.env` file in the backend directory:
+| Variable | Default | Purpose |
+|---|---|---|
+| `ENCRYPTION_KEY` | required | Fernet key that encrypts Magento API tokens at rest |
+| `DATABASE_URL` | `sqlite+aiosqlite:///./cmssync.db` | SQLite database (async driver required) |
+| `DATA_DIR` / `INSTANCES_DATA_DIR` | `data` / `data/instances` | Where snapshot JSON files are written |
+| `CORS_ORIGINS` | `http://localhost:3000,http://localhost:3001` | Browser origins allowed to call the API directly |
+| `MAGENTO_TIMEOUT` | `30` | Seconds per Magento request |
+| `MAGENTO_RETRY_ATTEMPTS` / `MAGENTO_RETRY_DELAY` | `3` / `1` | Retries on 5xx or network errors, base delay in seconds |
 
-```env
-# Database
-DATABASE_URL=sqlite:///./cmssync.db
+The frontend reads only `REACT_APP_API_URL` (default `/api`); leave it unset unless the UI is
+served from a different origin than the API. Full reference:
+[docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 
-# Security
-SECRET_KEY=your-secret-key-here
+## Documentation
 
-# CORS Origins (comma-separated)
-CORS_ORIGINS=http://localhost:3000,http://localhost:3001
+| Document | What it covers |
+|---|---|
+| [User Guide](docs/USER_GUIDE.md) | Magento token, every screen, the sync workflow, limitations |
+| [Configuration](docs/CONFIGURATION.md) | Environment variables, file locations, logging |
+| [Deployment](docs/DEPLOYMENT.md) | Docker Compose, manual install with nginx, backups, access control |
+| [API Reference](docs/API.md) | Every REST endpoint with request and response shapes |
+| [Architecture](docs/ARCHITECTURE.md) | Components, storage, comparison and sync rules, Magento REST usage |
+| [Troubleshooting](docs/TROUBLESHOOTING.md) | Symptoms, causes and fixes |
+| [Changelog](CHANGELOG.md) | What changed |
+| [Contributing](CONTRIBUTING.md) | Development setup, conventions, tests, pull requests |
 
-# Logging
-LOG_LEVEL=INFO
-```
+## Testing
 
-### Frontend Environment Variables
-
-Create a `.env` file in the frontend directory:
-
-```env
-# API URL
-REACT_APP_API_URL=http://localhost:8000
-
-# Port (optional)
-PORT=3000
-```
-
-## Usage Guide
-
-### 1. Add Magento Instances
-
-1. Navigate to the "Instances" page
-2. Click "Add Instance"
-3. Enter:
-   - Instance name
-   - Magento base URL (e.g., https://your-store.com)
-   - REST API Integration token
-4. Test the connection and save
-
-### 2. Refresh Data
-
-- Click the refresh icons to pull latest CMS content
-- Data is cached locally for better performance
-- Refresh on-demand when needed
-
-### 3. Compare Content
-
-1. Navigate to "Compare Blocks" or "Compare Pages"
-2. Select source and destination instances
-3. Click "Compare" to see differences
-4. Use filters and search to find specific content
-
-### 4. Sync Content
-
-#### Individual Sync
-1. Click the "View Diff" button on any item
-2. Review the changes in the visual diff viewer
-3. Click "Push to Destination" to sync that item
-
-![Diff Viewer Screenshot](doc/magento2-cms-sync-diff.png)
-
-#### Bulk Sync
-1. Select multiple items using checkboxes
-2. Click "Sync X items"
-3. Review the preview
-4. Confirm to execute the sync
-
-### 5. Monitor Progress
-
-- View active syncs in real-time on the Sync page
-- Check sync history with detailed logs
-- Export history to CSV for reporting
-
-## API Documentation
-
-The backend provides a comprehensive REST API. Access the interactive documentation at:
-- Swagger UI: http://localhost:8000/docs
-- ReDoc: http://localhost:8000/redoc
-
-### Key Endpoints
-
-- `GET /api/instances/` - List all instances
-- `POST /api/instances/` - Add new instance
-- `POST /api/compare/blocks` - Compare CMS blocks
-- `POST /api/compare/pages` - Compare CMS pages
-- `POST /api/sync/blocks` - Sync CMS blocks
-- `POST /api/sync/pages` - Sync CMS pages
-- `GET /api/history/` - Get sync history
-- `GET /api/history/statistics` - Get sync statistics
-
-## Architecture
-
-### Backend (FastAPI)
-- Asynchronous Python web framework
-- SQLAlchemy for database ORM
-- Pydantic for data validation
-- Background tasks for sync operations
-- JSON file storage for data caching
-
-### Frontend (React)
-- TypeScript for type safety
-- Material-UI component library
-- Zustand for state management
-- Axios for API communication
-- React Router for navigation
-
-### Data Storage Strategy
-- Configuration stored in SQLite database
-- CMS content cached as JSON files
-- Located in `backend/data/instances/{instance_id}/`
-- On-demand refresh for optimal performance
-
-## Development
-
-### Project Structure
-
-```
-magento-cms-sync/
-├── backend/
-│   ├── api/              # API endpoints
-│   ├── models/           # Database models
-│   ├── services/         # Business logic
-│   ├── integrations/     # Magento API client
-│   ├── data/            # JSON data storage
-│   └── main.py          # FastAPI application
-├── frontend/
-│   ├── src/
-│   │   ├── components/   # Reusable components
-│   │   ├── pages/       # Page components
-│   │   ├── services/    # API services
-│   │   ├── store/       # State management
-│   │   └── types/       # TypeScript types
-│   └── public/          # Static assets
-├── docker-compose.yml   # Docker configuration
-└── start-dev.sh        # Development startup script
-```
-
-### Running Tests
+The backend test suite runs the real application against a fake Magento REST API
+(`backend/tests/magento_stub`), so no Magento installation is needed:
 
 ```bash
-# Backend tests
 cd backend
-pytest
-
-# Frontend tests
-cd frontend
-npm test
+pip install -r requirements-dev.txt
+python -m pytest
 ```
 
-### Code Quality
+The fake can also run as a standalone server for trying the UI without Magento
+(`python -m tests.magento_stub --help`).
 
-```bash
-# Backend
-black .           # Format code
-flake8           # Lint code
-mypy .           # Type checking
+## Known limitations
 
-# Frontend
-npm run lint     # ESLint
-npm run format   # Prettier
-```
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Connection refused to Magento API**
-   - Verify the Magento URL is accessible
-   - Check if the API token has correct permissions
-   - Ensure Magento REST API is enabled
-
-2. **CORS errors in browser**
-   - Update CORS_ORIGINS in backend .env
-   - Restart the backend server
-
-3. **Database errors**
-   - Delete cmssync.db and restart backend
-   - Run migrations: `alembic upgrade head`
-
-4. **Sync failures**
-   - Check Magento API token permissions
-   - Verify network connectivity
-   - Review error logs in sync history
-
-## Security Considerations
-
-- API tokens are stored encrypted in the database
-- HTTPS recommended for production
-- CORS configured for specific origins
-- No direct database access from frontend
-- All operations logged for audit trail
-
-## Performance Tips
-
-- Use data refresh strategically - not needed for every comparison
-- Filter large datasets before syncing
-- Monitor sync history for failed operations
-- Clean up old sync logs periodically
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/amazing-feature`
-3. Commit your changes: `git commit -m 'Add amazing feature'`
-4. Push to the branch: `git push origin feature/amazing-feature`
-5. Open a Pull Request
+- The application has **no authentication of its own**. Run it on a private network or
+  behind a reverse proxy that requires login. Magento tokens are encrypted at rest and never
+  returned by the API, but anyone who can reach the tool can use them through it.
+- Items are matched by identifier only. Magento allows the same identifier once per store
+  view; such duplicates collapse into a single row and may fail to sync.
+- Store-view assignment is not synchronised. Stock Magento's REST API does not expose it;
+  created items land on the destination's default (all store views).
+- Deletions are never synchronised: items that exist only in the destination are reported,
+  not removed.
+- A sync runs inside the API process. If the backend restarts mid-sync, that run is recorded
+  as failed at the next start and has to be repeated.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Acknowledgments
-
-- Built with [FastAPI](https://fastapi.tiangolo.com/)
-- UI powered by [React](https://reactjs.org/) and [Material-UI](https://mui.com/)
-- Magento integration via [REST API](https://devdocs.magento.com/guides/v2.4/rest/bk-rest.html)
+MIT (see `LICENSE`).

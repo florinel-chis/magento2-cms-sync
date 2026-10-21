@@ -82,12 +82,10 @@ export default function History() {
   const loadHistory = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await historyService.getHistory({
-        skip: 0,
-        limit: 100 // API maximum
-      });
-      setHistory(response.items);
-      setFilteredHistory(response.items);
+      // Pages through GET /history/ (limit=100 per request) until every entry is loaded
+      const items = await historyService.getAllHistory<SyncHistoryItem>();
+      setHistory(items);
+      setFilteredHistory(items);
     } catch (error: any) {
       showSnackbar(error.message || 'Failed to load history', 'error');
     } finally {
@@ -119,7 +117,10 @@ export default function History() {
     }
 
     if (endDate) {
-      filtered = filtered.filter(item => new Date(item.started_at) <= endDate);
+      // Include the whole selected day (local time)
+      const endOfDay = new Date(endDate);
+      endOfDay.setHours(23, 59, 59, 999);
+      filtered = filtered.filter(item => new Date(item.started_at) <= endOfDay);
     }
 
     setFilteredHistory(filtered);
@@ -181,11 +182,16 @@ export default function History() {
 
   const formatDuration = (seconds: number | null) => {
     if (!seconds) return '-';
-    if (seconds < 60) return `${seconds}s`;
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-    return `${minutes}m ${remainingSeconds}s`;
+    if (seconds < 60) return `${Math.round(seconds * 10) / 10}s`;
+    const totalSeconds = Math.round(seconds);
+    const minutes = Math.floor(totalSeconds / 60);
+    const remainingSeconds = totalSeconds % 60;
+    return `${minutes}m ${String(remainingSeconds).padStart(2, '0')}s`;
   };
+
+  // RFC 4180: every cell is wrapped in double quotes and inner quotes are doubled
+  const csvCell = (value: string | number | null | undefined): string =>
+    `"${String(value ?? '').replace(/"/g, '""')}"`;
 
   const handleExport = () => {
     // Export filtered history to CSV
@@ -201,7 +207,7 @@ export default function History() {
         item.items_failed,
         item.duration ? formatDuration(item.duration) : '-',
       ]),
-    ].map(row => row.join(',')).join('\n');
+    ].map(row => row.map(csvCell).join(',')).join('\r\n');
 
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
@@ -209,6 +215,7 @@ export default function History() {
     a.href = url;
     a.download = `sync-history-${new Date().toISOString().split('T')[0]}.csv`;
     a.click();
+    window.URL.revokeObjectURL(url);
   };
 
   const paginatedHistory = useMemo(() => {

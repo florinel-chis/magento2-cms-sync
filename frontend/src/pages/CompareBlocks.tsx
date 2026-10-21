@@ -37,6 +37,7 @@ import {
 } from '@mui/icons-material';
 import useStore from '../store';
 import comparisonService from '../services/comparisonService';
+import instanceService from '../services/instanceService';
 import { DataType, ComparisonStatus, ComparisonItem } from '../types';
 import DiffViewer from '../components/DiffViewer';
 import SyncDialog from '../components/SyncDialog';
@@ -49,6 +50,7 @@ export default function CompareBlocks() {
     comparisonResult,
     loadingComparison,
     selectedItems,
+    setInstances,
     setSelectedSourceInstance,
     setSelectedDestInstance,
     setComparisonResult,
@@ -70,13 +72,12 @@ export default function CompareBlocks() {
 
   const loadInstances = useCallback(async () => {
     try {
-      const response = await fetch('/api/instances/');
-      const data = await response.json();
-      useStore.getState().setInstances(data);
+      const data = await instanceService.getAll();
+      setInstances(data);
     } catch (error) {
       console.error('Failed to load instances:', error);
     }
-  }, []);
+  }, [setInstances]);
 
   const handleCompare = useCallback(async () => {
     if (!selectedSourceInstance || !selectedDestInstance) {
@@ -138,20 +139,12 @@ export default function CompareBlocks() {
     setSyncDialogOpen(true);
   };
 
-  const handleSelectAll = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (event.target.checked && comparisonResult) {
-      const allIdentifiers = comparisonResult.items
-        .filter(item => 
-          item.source_status !== ComparisonStatus.MISSING &&
-          (item.source_status === ComparisonStatus.DIFFERENT || 
-           item.destination_status === ComparisonStatus.MISSING)
-        )
-        .map(item => item.identifier);
-      selectAllItems(allIdentifiers);
-    } else {
-      clearSelectedItems();
-    }
-  };
+  // An item can be pushed to the destination when it exists in the source and is
+  // either different or missing in the destination
+  const isSyncable = (item: ComparisonItem) =>
+    item.source_status !== ComparisonStatus.MISSING &&
+    (item.source_status === ComparisonStatus.DIFFERENT ||
+     item.destination_status === ComparisonStatus.MISSING);
 
   const getStatusChip = (item: ComparisonItem) => {
     if (item.source_status === ComparisonStatus.MISSING) {
@@ -171,6 +164,9 @@ export default function CompareBlocks() {
       // Apply status filter
       if (statusFilter !== 'all') {
         if (statusFilter === 'missing' && item.destination_status !== ComparisonStatus.MISSING) {
+          return false;
+        }
+        if (statusFilter === 'only_in_destination' && item.source_status !== ComparisonStatus.MISSING) {
           return false;
         }
         if (statusFilter === 'different' && item.source_status !== ComparisonStatus.DIFFERENT) {
@@ -196,6 +192,28 @@ export default function CompareBlocks() {
   const paginatedItems = useMemo(() => {
     return filteredItems.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
   }, [filteredItems, page, rowsPerPage]);
+
+  // Syncable items of the CURRENT filtered list; the header checkbox operates on this set only
+  const filteredSyncableIds = useMemo(
+    () => filteredItems.filter(isSyncable).map(item => item.identifier),
+    [filteredItems]
+  );
+  const selectedFilteredCount = useMemo(
+    () => filteredSyncableIds.filter(id => selectedItems.includes(id)).length,
+    [filteredSyncableIds, selectedItems]
+  );
+  const allFilteredSelected = filteredSyncableIds.length > 0 && selectedFilteredCount === filteredSyncableIds.length;
+  const someFilteredSelected = selectedFilteredCount > 0 && !allFilteredSelected;
+
+  const handleSelectAll = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.checked) {
+      // Add the filtered syncable items, keeping selections outside the filter untouched
+      selectAllItems(Array.from(new Set([...selectedItems, ...filteredSyncableIds])));
+    } else {
+      // Remove only the filtered ones
+      selectAllItems(selectedItems.filter(id => !filteredSyncableIds.includes(id)));
+    }
+  };
 
   return (
     <Box>
@@ -278,9 +296,10 @@ export default function CompareBlocks() {
                 <Typography variant="body2">
                   Total: {comparisonResult.total_source} in source, {comparisonResult.total_destination} in destination
                 </Typography>
-                <Chip label={`${comparisonResult.exists_in_both} Same`} color="success" size="small" />
+                <Chip label={`${comparisonResult.exists_in_both - comparisonResult.different} Same`} color="success" size="small" />
                 <Chip label={`${comparisonResult.different} Different`} color="info" size="small" />
                 <Chip label={`${comparisonResult.missing_in_destination} Missing`} color="error" size="small" />
+                <Chip label={`${comparisonResult.missing_in_source} Only in Destination`} color="warning" size="small" />
                 {selectedItems.length > 0 && (
                   <Button
                     variant="contained"
@@ -307,6 +326,7 @@ export default function CompareBlocks() {
                   >
                     <MenuItem value="all">All Items</MenuItem>
                     <MenuItem value="missing">Missing</MenuItem>
+                    <MenuItem value="only_in_destination">Only in Destination</MenuItem>
                     <MenuItem value="different">Different</MenuItem>
                     <MenuItem value="same">Same</MenuItem>
                   </Select>
@@ -320,6 +340,7 @@ export default function CompareBlocks() {
                     setSearchQuery(e.target.value);
                     setPage(0);
                   }}
+                  inputProps={{ 'data-search-input': true }}
                   InputProps={{
                     startAdornment: (
                       <InputAdornment position="start">
@@ -343,11 +364,9 @@ export default function CompareBlocks() {
                     <TableCell padding="checkbox">
                       <Checkbox
                         onChange={handleSelectAll}
-                        checked={selectedItems.length > 0 && selectedItems.length === filteredItems.filter(item => 
-                          item.source_status !== ComparisonStatus.MISSING &&
-                          (item.source_status === ComparisonStatus.DIFFERENT || 
-                           item.destination_status === ComparisonStatus.MISSING)
-                        ).length}
+                        checked={allFilteredSelected}
+                        indeterminate={someFilteredSelected}
+                        disabled={filteredSyncableIds.length === 0}
                       />
                     </TableCell>
                     <TableCell>Identifier</TableCell>
@@ -361,10 +380,7 @@ export default function CompareBlocks() {
                     <React.Fragment key={item.identifier}>
                       <TableRow>
                         <TableCell padding="checkbox">
-                          {item.source_status !== ComparisonStatus.MISSING && (
-                            item.source_status === ComparisonStatus.DIFFERENT || 
-                            item.destination_status === ComparisonStatus.MISSING
-                          ) && (
+                          {isSyncable(item) && (
                             <Checkbox
                               checked={selectedItems.includes(item.identifier)}
                               onChange={() => toggleItemSelection(item.identifier)}
@@ -412,7 +428,7 @@ export default function CompareBlocks() {
                                       </TableRow>
                                       <TableRow>
                                         <TableCell component="th" scope="row">Active (Source)</TableCell>
-                                        <TableCell>{item.source_data.is_active ? 'Yes' : 'No'}</TableCell>
+                                        <TableCell>{item.source_data.active ? 'Yes' : 'No'}</TableCell>
                                       </TableRow>
                                     </>
                                   )}
@@ -424,7 +440,7 @@ export default function CompareBlocks() {
                                       </TableRow>
                                       <TableRow>
                                         <TableCell component="th" scope="row">Active (Destination)</TableCell>
-                                        <TableCell>{item.destination_data.is_active ? 'Yes' : 'No'}</TableCell>
+                                        <TableCell>{item.destination_data.active ? 'Yes' : 'No'}</TableCell>
                                       </TableRow>
                                     </>
                                   )}

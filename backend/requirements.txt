@@ -24,12 +24,6 @@ python-multipart==0.0.18
 # Async File I/O (CRITICAL FIX for blocking I/O)
 aiofiles==23.2.1
 
-# Testing
-pytest==8.3.3
-pytest-asyncio==0.24.0
-pytest-cov==5.0.0
-pytest-mock==3.14.0
-httpx==0.28.0  # Already included above, needed for testing
 
 # Security (for token encryption)
 cryptography==42.0.8

@@ -1,212 +1,127 @@
-# Troubleshooting Guide - Magento CMS Sync Tool
+# Troubleshooting
 
-## Common Issues and Solutions
+Symptoms are listed with the exact message the tool shows, the cause, and the fix.
 
-### Backend Issues
+## Starting the backend
 
-#### 1. Backend won't start
-**Error**: `ModuleNotFoundError`
-```bash
-# Solution: Activate virtual environment and install dependencies
-cd backend
-source venv/bin/activate
-pip install -r requirements.txt
-```
+**`The asyncio extension requires an async driver to be used`** at startup.
+`DATABASE_URL` uses `sqlite:///`. It must be `sqlite+aiosqlite:///...`.
 
-#### 2. Database errors
-**Error**: `sqlite3.OperationalError: database is locked`
-```bash
-# Solution: Ensure only one instance is running
-pkill -f "uvicorn main:app"
-# Then restart
-uvicorn main:app --reload
-```
+**`error parsing value for field "cors_origins"`** at startup.
+You are running a version older than this one with a comma-separated `CORS_ORIGINS`; upgrade,
+or use a JSON list (`["http://a","http://b"]`).
 
-#### 3. API Token Authentication Fails
-**Error**: `401 Unauthorized` when testing connection
-- Verify the API token is correct
-- Check if token has necessary permissions in Magento
-- Ensure the Magento instance URL is correct (with /rest prefix if needed)
+**`ENCRYPTION_KEY must be a Fernet key`** at startup, or Compose stops with
+`Set ENCRYPTION_KEY`. The key that encrypts Magento tokens is missing. Generate one with
+`python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'`
+and put it in `backend/.env` or, for Docker, in the `.env` next to the compose files.
 
-#### 4. CORS Errors
-**Error**: `Access to XMLHttpRequest blocked by CORS policy`
-```python
-# Solution: Update backend/config.py
-CORS_ORIGINS = ["http://localhost:3000", "http://localhost:3001", "your-frontend-url"]
-```
+**Connection test fails for every instance after a restart, log says
+"Instance token is stored unencrypted" or "Invalid encrypted token or decryption key".**
+The first message means tokens from a version before encryption are still in plain text;
+run `python scripts/encrypt_existing_tokens.py` once (inside the container:
+`docker compose exec backend python scripts/encrypt_existing_tokens.py`). The second means
+`ENCRYPTION_KEY` changed since the tokens were stored; restore the original key, or
+re-enter the tokens on the Instances page.
 
-### Frontend Issues
+**`ModuleNotFoundError`**. The virtual environment is not active or dependencies are not
+installed: `source venv/bin/activate && pip install -r requirements.txt`.
 
-#### 1. Frontend build fails
-**Error**: `npm ERR! peer dep missing`
-```bash
-# Solution: Clean install
-cd frontend
-rm -rf node_modules package-lock.json
-npm install
-```
+**Port already in use** (`npm start` says "Something is already running on port 3000").
+Start the dev server with `PORT=3001 npm start`; 3001 is in the backend's default CORS list.
 
-#### 2. Blank page or React errors
-```bash
-# Check browser console for errors
-# Clear browser cache
-# Check if API URL is correct in .env
-```
+## The UI cannot reach the API
 
-#### 3. API calls failing
-**Error**: `Network Error` or `ERR_CONNECTION_REFUSED`
-- Ensure backend is running on port 8000
-- Check proxy configuration in package.json
-- Verify REACT_APP_API_URL in .env
+**Every page shows "Network error. Please check your connection."** or the browser console
+shows 404s for `/instances`.
+`REACT_APP_API_URL` is set without the `/api` suffix, or points at the wrong host. In
+development leave it unset (the dev server proxies `/api` to port 8000); in production either
+leave it unset and proxy `/api` on the same origin, or set it to the full API base including
+`/api` and add the UI origin to `CORS_ORIGINS`.
 
-### Magento Integration Issues
+**Browser console: "blocked by CORS policy".** The UI is served from an origin that is not
+in `CORS_ORIGINS`. Add it (comma-separated) and restart the backend, or serve the UI and the
+API from the same origin.
 
-#### 1. Empty data when refreshing
-**Possible causes**:
-- API token lacks permissions
-- Incorrect store view
-- No CMS content in Magento instance
+## Connecting to Magento
 
-**Debug steps**:
-```bash
-# Test Magento API directly
-curl -X GET "https://your-magento.com/rest/V1/cmsBlock/search" \
-  -H "Authorization: Bearer your-token"
-```
+The messages below come from **Test Connection** on the Instances page.
 
-#### 2. Sync failures
-**Error**: `Failed to create/update content`
-- Check Magento error logs
-- Verify user has write permissions
-- Ensure required fields are not missing
+**"Authentication failed. Please check your API token."**
+Magento answered 401. Either the token is wrong, it expired (admin tokens expire; see the
+User Guide), the user lost access, or on Magento 2.4.4+ an integration token is used while
+*Allow OAuth Access Tokens to be used as standalone Bearer tokens* is disabled.
 
-### Data Storage Issues
+**"HTTP error: 404"**
+The URL is not the Magento base URL. Use `https://shop.example.com`, not `.../rest` or
+`.../rest/V1`, and not a storefront that is served by something other than Magento.
 
-#### 1. Disk space issues
-```bash
-# Check disk usage
-du -sh backend/data/
+**"Connection failed: ..."**
+Network, DNS or TLS problem between the tool's server and Magento. The reason is the raw
+client error (for example a timeout after `MAGENTO_TIMEOUT` seconds).
 
-# Clean old snapshots (careful!)
-find backend/data/instances -name "*.json" -mtime +30 -delete
-```
+**Refresh fails with "Failed to fetch data from Magento: ..."** (HTTP 502 from the API).
+The connection test passes but the token lacks `Magento_Cms::block` or `Magento_Cms::page`,
+or the store returned an error while paging. The reason after the colon is Magento's response.
 
-#### 2. JSON parsing errors
-**Error**: `JSONDecodeError`
-- Check if JSON files are corrupted
-- Delete the specific snapshot and refresh data
+## Comparing
 
-### Performance Issues
+**The comparison does not show content I just changed in Magento.**
+Comparisons read the cached snapshots. Click the Blocks or Pages icon on the Instances page
+to refresh that instance, then compare again.
 
-#### 1. Slow comparison
-**Symptoms**: Comparison takes too long
-- Ensure data is cached (refresh if needed)
-- Check network latency to Magento
-- Consider pagination for large datasets
+**A page is listed once although Magento has several with that identifier** (one per store
+view). Items are keyed by identifier; duplicates collapse. See the User Guide's limitations.
 
-#### 2. High memory usage
-```bash
-# Monitor memory
-top -p $(pgrep -f "uvicorn main:app")
+**Every item is "Different" right after a successful sync.**
+Versions before this one compared Magento's creation and update timestamps, which differ
+between servers. Upgrade; timestamps are no longer compared.
 
-# Increase Python memory limit if needed
-```
+## Syncing
 
-### Debugging Tools
+Per-item errors appear in the wizard's result step and in `GET /api/history/{sync_id}`.
 
-#### 1. Enable debug logging
-```python
-# backend/config.py
-LOG_LEVEL = "DEBUG"
-```
+**"A block identifier with the same properties already exists in the selected store."** or
+**"Could not save the page: A page URL key for specified store already exists."**
+Magento's uniqueness check. Usually the destination already has that identifier in another
+store view, which the tool cannot see. Fix the duplicate in Magento or skip the item.
 
-#### 2. Check API documentation
-Visit http://localhost:8000/docs for interactive API testing
+**"Source item not found: <identifier>"**
+The source snapshot no longer contains the item (refreshed between compare and sync).
+Compare again.
 
-#### 3. Database inspection
-```bash
-# Open SQLite database
-sqlite3 backend/cmssync.db
-.tables
-.schema instances
-```
+**"Invalid action or item state: create|update"**
+The item was created or removed in the destination after the comparison, so "create" met an
+existing item or "update" found none. Compare again.
 
-#### 4. Network debugging
-```bash
-# Monitor API calls
-tail -f backend/server.log
+**"Destination item has no id: <identifier>"**
+The destination's API returned an item without `id`; this happens only with customised
+Magento APIs. The item is skipped.
 
-# Check port usage
-lsof -i :8000
-lsof -i :3001
-```
+**Client error '401 Unauthorized' ...** in a per-item error, or a run that ends **failed**
+with a 401 in `error_message`. The destination token expired or was revoked mid-run. Update
+the token on the Instances page and run the sync again.
 
-### Quick Fixes
+**A run shows "Failed" with "Abandoned: the backend restarted while this sync was running".**
+The backend process stopped while the sync ran; whatever it had already sent to Magento
+stayed there. Compare again and sync the remaining items.
 
-#### Reset everything
-```bash
-# Stop all services
-pkill -f "uvicorn main:app"
-pkill -f "react-scripts"
+**A run stays "In Progress" or "Pending" while the backend is running.**
+Look at the backend log for a traceback; the run can be marked failed with
+`sqlite3 backend/cmssync.db "UPDATE sync_history SET sync_status='failed' WHERE id=<id>"`.
 
-# Clear data (WARNING: deletes all data)
-rm -rf backend/cmssync.db
-rm -rf backend/data/instances/*
+**"Push to Destination" reports that the sync is still running after five minutes.**
+The run continues in the background; follow it on the Sync page or in History. Very large
+pages or a slow destination can take that long.
 
-# Restart
-./start-dev.sh
-```
+## Where to look
 
-#### Recreate virtual environment
-```bash
-cd backend
-rm -rf venv
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-```
-
-#### Force refresh frontend
-```bash
-cd frontend
-rm -rf node_modules/.cache
-npm start
-```
-
-### Getting Help
-
-1. Check logs:
-   - Backend: `backend/server.log`
-   - Frontend: Browser console (F12)
-   - System: `/var/log/syslog` or journalctl
-
-2. Run health check:
-   ```bash
-   ./check-health.sh
-   ```
-
-3. Test individual components:
-   - Backend API: http://localhost:8000/docs
-   - Frontend: http://localhost:3001
-   - Database: `sqlite3 backend/cmssync.db`
-
-4. Common commands:
-   ```bash
-   # Check if services are running
-   ps aux | grep -E "uvicorn|react"
-   
-   # Check network connections
-   netstat -tuln | grep -E "8000|3001"
-   
-   # View recent logs
-   tail -n 100 backend/server.log
-   ```
-
-### Reporting Issues
-
-When reporting issues, please include:
-1. Error messages (full stack trace)
-2. Steps to reproduce
-3. Environment details (OS, Python version, Node version)
-4. Output from `./check-health.sh`
-5. Relevant log files
+- Backend application log: `backend/logs/app.log`; errors only: `backend/logs/errors.log`.
+- Request log: uvicorn's standard output (`docker compose logs backend`).
+- Snapshots: `backend/data/instances/<instance id>/blocks.json` and `pages.json` are exactly
+  what Magento returned; inspect them to understand a surprising comparison.
+- Database: `sqlite3 backend/cmssync.db` with tables `instances`, `data_snapshots` and
+  `sync_history`.
+- Interactive API docs: `http://<backend>/docs`.
+- Direct Magento check:
+  `curl -H "Authorization: Bearer <token>" "https://shop.example.com/rest/V1/cmsPage/search?searchCriteria[pageSize]=1"`

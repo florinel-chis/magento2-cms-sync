@@ -159,7 +159,7 @@ class TestComparisonService:
         assert item.destination_status == ComparisonStatus.DIFFERENT
         assert len(item.differences) > 0
         assert "content" in item.differences
-        assert "is_active" in item.differences
+        assert "active" in item.differences
 
     def test_get_item_diff_with_differences(self):
         """Test getting detailed field diff."""

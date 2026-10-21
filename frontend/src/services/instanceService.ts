@@ -3,7 +3,7 @@ import { Instance, InstanceCreate, InstanceUpdate, InstanceTestResult } from '..
 
 class InstanceService {
   async getAll(): Promise<Instance[]> {
-    const response = await api.get('/instances');
+    const response = await api.get('/instances/');
     return response.data;
   }
 
@@ -13,7 +13,7 @@ class InstanceService {
   }
 
   async create(data: InstanceCreate): Promise<Instance> {
-    const response = await api.post('/instances', data);
+    const response = await api.post('/instances/', data);
     return response.data;
   }
 
