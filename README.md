@@ -102,6 +102,29 @@ REACT_APP_API_URL=http://localhost:8000
 PORT=3000
 ```
 
+## Testing Without Magento
+
+The backend ships with a fake Magento REST API (`backend/tests/magento_stub`) that mimics
+the CMS block, CMS page and store-view endpoints, including Magento's error messages,
+pagination quirks and input validation. The test suite runs the real FastAPI app against
+two of these fakes, so no Magento installation is needed:
+
+```bash
+cd backend
+pip install -r requirements-dev.txt
+python -m pytest
+```
+
+To try the UI without Magento, run two fakes and add them as instances (token `secret`):
+
+```bash
+cd backend
+python -m tests.magento_stub --port 8081 --token secret --seed demo        # source
+python -m tests.magento_stub --port 8082 --token secret --seed demo-dest   # drifted destination
+```
+
+See `backend/tests/magento_stub/README.md` for the full behaviour list.
+
 ## Usage Guide
 
 ### 1. Add Magento Instances
