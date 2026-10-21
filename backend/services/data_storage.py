@@ -12,6 +12,7 @@ from models.models import DataSnapshot, Instance
 from models.schemas import DataType
 from integrations.magento_client import MagentoClient
 from config import settings
+from utils.encryption import decrypt_stored_token
 
 logger = logging.getLogger(__name__)
 
@@ -164,7 +165,7 @@ class DataStorageService:
         try:
             client = MagentoClient(
                 base_url=str(instance.url),
-                token=instance.api_token
+                token=decrypt_stored_token(instance.api_token)
             )
 
             # Fetch data based on type

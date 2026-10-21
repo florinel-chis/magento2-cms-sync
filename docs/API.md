@@ -22,10 +22,10 @@ API token is write-only: it is accepted on create and update but never returned.
 | Method and path | Description |
 |---|---|
 | `GET /api/instances/?skip=0&limit=100` | List instances. |
-| `POST /api/instances/` | Create. Body: `{"name", "url", "api_token", "is_active": true}`. `url` must be an absolute http(s) URL. 400 `Instance with this name already exists`. |
+| `POST /api/instances/` | Create, returns 201. Body: `{"name", "url", "api_token", "is_active": true}`. `url` must be an absolute http(s) URL. 400 `Instance with this name already exists`. |
 | `GET /api/instances/{id}` | One instance. 404 `Instance not found`. |
 | `PUT /api/instances/{id}` | Partial update; any of `name`, `url`, `api_token`, `is_active`. Omit `api_token` to keep the stored one. 400 on a name clash. |
-| `DELETE /api/instances/{id}` | Deletes the instance, its snapshot files and every sync history run it took part in, as source or destination. Returns `{"message": "Instance deleted successfully"}`. |
+| `DELETE /api/instances/{id}` | Deletes the instance, its snapshot files and every sync history run it took part in, as source or destination. Returns 204. |
 | `POST /api/instances/{id}/test` | Calls Magento's `store/storeViews`. Returns `{"success", "message", "version": null, "store_views": [...]}`; `success` is false with `Authentication failed. Please check your API token.` on 401, `HTTP error: <code>` on other HTTP errors, or `Connection failed: <reason>`. Always HTTP 200. |
 | `GET /api/instances/{id}/data-snapshots` | `{"instance_id", "blocks": {"count", "last_updated"} \| null, "pages": ...}` for the latest snapshots. |
 | `GET /api/instances/data-snapshots/all` | The same for every instance, keyed by instance id (`lastUpdated` camel-cased). |
@@ -89,6 +89,8 @@ Request body shared by preview and execution:
 
 - `action` is `create` (item must be absent in the destination) or `update` (item must
   exist there); a mismatch yields the per-item error `Invalid action or item state`.
+- Validation: source and destination must differ, 1 to 100 items per request, identifiers
+  1 to 255 characters, `fields_to_sync` limited to known field names.
 - `fields_to_sync` (updates only): copy only these fields from the source; the rest of the
   destination item is kept. Omit it to copy all content fields.
 - `store_view_mapping` maps source store ids to destination store ids (`{"1": "2"}`). It only

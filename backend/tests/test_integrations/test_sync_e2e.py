@@ -9,7 +9,7 @@ pytestmark = pytest.mark.integration
 async def _create_instances(api):
     src = await api.post("/api/instances/", json={"name": "Source", "url": f"http://{SOURCE_HOST}", "api_token": TOKEN})
     dst = await api.post("/api/instances/", json={"name": "Destination", "url": f"http://{DEST_HOST}", "api_token": TOKEN})
-    assert src.status_code == 200 and dst.status_code == 200, (src.text, dst.text)
+    assert src.status_code == 201 and dst.status_code == 201, (src.text, dst.text)
     return src.json()["id"], dst.json()["id"]
 
 
@@ -193,8 +193,10 @@ async def test_api_never_returns_the_token_and_keeps_it_when_omitted_on_update(a
     # the stored token still works, so it was kept
     assert (await api.post(f"/api/instances/{created['id']}/test")).json()["success"] is True
 
+    other = (await api.post("/api/instances/", json={
+        "name": "Other", "url": f"http://{SOURCE_HOST}", "api_token": TOKEN})).json()
     comparison = (await api.post("/api/compare/blocks", json={
-        "source_instance_id": created["id"], "destination_instance_id": created["id"], "force_refresh": True})).json()
+        "source_instance_id": created["id"], "destination_instance_id": other["id"], "force_refresh": True})).json()
     assert "api_token" not in comparison["source_instance"]
 
 
@@ -209,7 +211,7 @@ async def test_deleting_an_instance_removes_history_on_both_sides(api):
         assert r.status_code == 200
     assert (await api.get("/api/history/")).json()["total"] == 2
 
-    assert (await api.delete(f"/api/instances/{dst_id}")).status_code == 200
+    assert (await api.delete(f"/api/instances/{dst_id}")).status_code == 204
     assert (await api.get("/api/history/")).json()["total"] == 0
     assert (await api.get(f"/api/instances/{dst_id}")).status_code == 404
 
@@ -234,3 +236,31 @@ async def test_startup_marks_abandoned_syncs_failed(api):
     assert statuses == [("blocks", "completed"), ("blocks", "failed"), ("pages", "failed")]
     failed = [r for r in rows if r["sync_status"] == "failed"]
     assert all(r["error_message"] == ABANDONED_MESSAGE and r["completed_at"] for r in failed)
+
+
+async def test_tokens_are_encrypted_at_rest_and_legacy_plaintext_still_works(api, source_magento):
+    from sqlalchemy import select, text
+    from models.database import AsyncSessionLocal
+    from models.models import Instance
+    from utils.encryption import decrypt_token
+    created = (await api.post("/api/instances/", json={
+        "name": "Encrypted", "url": f"http://{SOURCE_HOST}", "api_token": TOKEN})).json()
+    async with AsyncSessionLocal() as db:
+        stored = (await db.execute(select(Instance.api_token).where(Instance.id == created["id"]))).scalar_one()
+    assert stored != TOKEN and stored.startswith("gAAAA") and decrypt_token(stored) == TOKEN
+    assert (await api.post(f"/api/instances/{created['id']}/test")).json()["success"] is True
+
+    # an instance written before encryption existed still authenticates (and gets a warning)
+    async with AsyncSessionLocal() as db:
+        await db.execute(text("INSERT INTO instances (name, url, api_token, is_active, created_at, updated_at) "
+                              "VALUES ('Legacy', :url, :tok, 1, datetime('now'), datetime('now'))"),
+                         {"url": f"http://{SOURCE_HOST}/", "tok": TOKEN})
+        await db.commit()
+        legacy_id = (await db.execute(select(Instance.id).where(Instance.name == "Legacy"))).scalar_one()
+    assert (await api.post(f"/api/instances/{legacy_id}/test")).json()["success"] is True
+
+    # replacing the token re-encrypts it
+    assert (await api.put(f"/api/instances/{legacy_id}", json={"api_token": "rotated"})).status_code == 200
+    async with AsyncSessionLocal() as db:
+        stored = (await db.execute(select(Instance.api_token).where(Instance.id == legacy_id))).scalar_one()
+    assert stored != "rotated" and decrypt_token(stored) == "rotated"

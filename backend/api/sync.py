@@ -14,6 +14,7 @@ from models.schemas import (
 from services.data_storage import DataStorageService
 from services.sync import SyncService
 from integrations.magento_client import MagentoClient
+from utils.encryption import decrypt_stored_token
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -199,7 +200,7 @@ async def _execute_sync(
             # Create Magento client for destination
             dest_client = MagentoClient(
                 base_url=str(dest_instance.url),
-                token=dest_instance.api_token
+                token=decrypt_stored_token(dest_instance.api_token)
             )
 
             # Perform sync

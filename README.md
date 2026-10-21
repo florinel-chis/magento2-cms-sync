@@ -65,6 +65,8 @@ Details, including the exact Magento REST calls and permissions, are in
 ```bash
 git clone https://github.com/florinel-chis/magento2-cms-sync.git
 cd magento2-cms-sync
+# key used to encrypt Magento API tokens in the database; keep it with your backups
+echo "ENCRYPTION_KEY=$(python3 -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')" > .env
 docker compose up -d --build
 ```
 
@@ -83,6 +85,7 @@ Backend (FastAPI). Tables are created on first start; there is no migration step
 cd backend
 python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
+export ENCRYPTION_KEY=$(python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')
 uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
@@ -104,6 +107,7 @@ The backend reads these environment variables (or a `backend/.env` file). Defaul
 
 | Variable | Default | Purpose |
 |---|---|---|
+| `ENCRYPTION_KEY` | required | Fernet key that encrypts Magento API tokens at rest |
 | `DATABASE_URL` | `sqlite+aiosqlite:///./cmssync.db` | SQLite database (async driver required) |
 | `DATA_DIR` / `INSTANCES_DATA_DIR` | `data` / `data/instances` | Where snapshot JSON files are written |
 | `CORS_ORIGINS` | `http://localhost:3000,http://localhost:3001` | Browser origins allowed to call the API directly |
@@ -126,7 +130,6 @@ served from a different origin than the API. Full reference:
 | [Troubleshooting](docs/TROUBLESHOOTING.md) | Symptoms, causes and fixes |
 | [Changelog](CHANGELOG.md) | What changed |
 | [Contributing](CONTRIBUTING.md) | Development setup, conventions, tests, pull requests |
-| [docs/README.md](docs/README.md) | Index of all documentation, including developer docs |
 
 ## Testing
 
@@ -145,8 +148,8 @@ The fake can also run as a standalone server for trying the UI without Magento
 ## Known limitations
 
 - The application has **no authentication of its own**. Run it on a private network or
-  behind a reverse proxy that requires login. Magento tokens are stored unencrypted in the
-  SQLite database (the API never returns them).
+  behind a reverse proxy that requires login. Magento tokens are encrypted at rest and never
+  returned by the API, but anyone who can reach the tool can use them through it.
 - Items are matched by identifier only. Magento allows the same identifier once per store
   view; such duplicates collapse into a single row and may fail to sync.
 - Store-view assignment is not synchronised. Stock Magento's REST API does not expose it;

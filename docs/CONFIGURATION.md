@@ -11,6 +11,7 @@ lists them all.
 
 | Variable | Default | Description |
 |---|---|---|
+| `ENCRYPTION_KEY` | none, **required** | Fernet key (44 base64 characters) used to encrypt Magento API tokens before they are stored. Generate one with `python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'`. The backend refuses to start without it. Back it up with the database: tokens cannot be decrypted without it. |
 | `DATABASE_URL` | `sqlite+aiosqlite:///./cmssync.db` | SQLAlchemy URL of the application database (instances, snapshot metadata, sync history). The async driver prefix is required: a plain `sqlite:///` URL fails at startup. The path is relative to the backend's working directory. |
 | `DATA_DIR` | `data` | Base data directory; created at startup if missing. |
 | `INSTANCES_DATA_DIR` | `data/instances` | Where the cached snapshots are written: one `blocks.json` and one `pages.json` per instance, in `INSTANCES_DATA_DIR/<instance id>/`. Created on demand. |
@@ -31,7 +32,7 @@ them absolute.
 
 | Path | Content |
 |---|---|
-| `cmssync.db` | SQLite database (tables `instances`, `data_snapshots`, `sync_history`). Created on first start; there is no migration tooling. |
+| `cmssync.db` | SQLite database (tables `instances`, `data_snapshots`, `sync_history`; tokens in `instances` are encrypted). Created on first start; there is no migration tooling. |
 | `data/instances/<id>/blocks.json`, `pages.json` | Cached CMS snapshots, exactly as returned by Magento. |
 | `logs/app.log` | Application log, rotated at 10 MB, 5 files kept. |
 | `logs/errors.log` | Errors only, same rotation. |
@@ -54,13 +55,15 @@ Requests time out after 30 seconds (hard-coded in `frontend/src/services/api.ts`
 
 ## Docker Compose variables
 
-`docker-compose.yml` (bind-mounts `./backend/data`, publishes the API on 8000 and the UI
-on 80) has no variables. `docker-compose.prod.yml` reads:
+`docker-compose.yml` bind-mounts `./backend/data` and publishes the API on 8000 and the UI
+on 80. `docker-compose.prod.yml` reads:
 
 | Variable | Default | Description |
 |---|---|---|
+| `ENCRYPTION_KEY` | none, **required** | Passed to the backend; Compose stops with a message when it is unset. |
 | `CORS_ORIGINS` | `http://localhost` | Passed to the backend; only needed for cross-origin API use. |
 | `PORT` | `80` | Host port published for the UI. |
 
-Both compose files set `DATABASE_URL`, `DATA_DIR` and `INSTANCES_DATA_DIR` so that the
+`docker-compose.yml` also requires `ENCRYPTION_KEY`. Put the variables in a `.env` file next to
+the compose files; Compose reads it automatically. Both compose files set `DATABASE_URL`, `DATA_DIR` and `INSTANCES_DATA_DIR` so that the
 database and the snapshots live together under `/app/data` in the container.

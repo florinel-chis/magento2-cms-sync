@@ -10,6 +10,7 @@ from api.sync import fail_abandoned_syncs
 from models.database import init_db, AsyncSessionLocal
 from config import settings
 from logging_config import setup_logging
+from utils.encryption import initialize_encryption
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +43,9 @@ async def lifespan(app: FastAPI):
 
 # Configure logging BEFORE creating the FastAPI app
 setup_logging(log_level="INFO", log_to_file=True)
+
+# Magento API tokens are encrypted at rest with ENCRYPTION_KEY (validated by config)
+initialize_encryption(settings.encryption_key)
     
 
 app = FastAPI(

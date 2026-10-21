@@ -41,7 +41,7 @@ SQLite via SQLAlchemy's async engine (`aiosqlite`). Tables are created at startu
 
 | Table | Purpose |
 |---|---|
-| `instances` | Name, URL, API token (plain text), active flag |
+| `instances` | Name, URL, API token (encrypted), active flag |
 | `data_snapshots` | One row per instance and content type: file path, item count, refresh time, store views |
 | `sync_history` | One row per sync run: instances, type, status, counts, timestamps, error, `sync_details` JSON |
 
@@ -101,8 +101,10 @@ The test suite's fake Magento (`backend/tests/magento_stub`) reproduces these ru
 - The application itself has no users or authentication. Anyone who can reach the UI or
   the API can read tokens and write to the connected stores. Restrict network access or put
   a reverse proxy with authentication in front of it.
-- Magento tokens are stored unencrypted in SQLite. The API accepts them but never returns
-  them.
+- Magento tokens are encrypted with Fernet (`ENCRYPTION_KEY`) before they are stored and
+  decrypted in memory only when a Magento call is made. The API accepts tokens but never
+  returns them. Rows written by versions before encryption are still accepted, with a
+  warning in the log, until `scripts/encrypt_existing_tokens.py` has converted them.
 - The backend talks to Magento with whatever the token allows; grant only the four ACL
   resources above.
 

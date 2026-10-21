@@ -62,8 +62,9 @@ export default function Instances() {
       setLoadingInstances(true);
       const data = await instanceService.getAll();
       setInstances(data);
-    } catch (error: any) {
-      showSnackbar(error.message || 'Failed to load instances', 'error');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to load instances';
+      showSnackbar(message, 'error');
     } finally {
       setLoadingInstances(false);
     }
@@ -73,8 +74,11 @@ export default function Instances() {
     try {
       const snapshots = await instanceService.getAllDataSnapshots();
       setDataSnapshots(snapshots);
-    } catch (error: any) {
-      console.error('Failed to load data snapshots:', error);
+    } catch (error) {
+      // Silently fail for data snapshots - not critical
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Failed to load data snapshots:', error);
+      }
     }
   }, []);
 
@@ -110,8 +114,9 @@ export default function Instances() {
       await instanceService.delete(deletingInstance);
       showSnackbar('Instance deleted successfully', 'success');
       loadInstances();
-    } catch (error: any) {
-      showSnackbar(error.message || 'Failed to delete instance', 'error');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to delete instance';
+      showSnackbar(message, 'error');
     } finally {
       setDeleteDialogOpen(false);
       setDeletingInstance(null);
@@ -134,8 +139,9 @@ export default function Instances() {
       } else {
         showSnackbar(result.message, 'error');
       }
-    } catch (error: any) {
-      showSnackbar(error.message || 'Connection test failed', 'error');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Connection test failed';
+      showSnackbar(message, 'error');
     } finally {
       setTestingConnection(null);
     }
@@ -165,8 +171,9 @@ export default function Instances() {
 
       // Reload all snapshots to ensure consistency
       loadDataSnapshots();
-    } catch (error: any) {
-      showSnackbar(error.message || `Failed to refresh ${dataType}`, 'error');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : `Failed to refresh ${dataType}`;
+      showSnackbar(message, 'error');
     } finally {
       setRefreshingData(null);
     }

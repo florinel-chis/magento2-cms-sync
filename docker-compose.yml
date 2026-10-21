@@ -7,6 +7,8 @@ services:
       dockerfile: Dockerfile
     container_name: cmssync-backend
     environment:
+      # Required: Fernet key for encrypting Magento API tokens at rest (see docs/DEPLOYMENT.md)
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:?Set ENCRYPTION_KEY, see docs/DEPLOYMENT.md}
       - DATABASE_URL=sqlite+aiosqlite:////app/data/cmssync.db
       - DATA_DIR=/app/data
       - INSTANCES_DATA_DIR=/app/data/instances

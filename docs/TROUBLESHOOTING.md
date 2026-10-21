@@ -11,6 +11,19 @@ Symptoms are listed with the exact message the tool shows, the cause, and the fi
 You are running a version older than this one with a comma-separated `CORS_ORIGINS`; upgrade,
 or use a JSON list (`["http://a","http://b"]`).
 
+**`ENCRYPTION_KEY must be a Fernet key`** at startup, or Compose stops with
+`Set ENCRYPTION_KEY`. The key that encrypts Magento tokens is missing. Generate one with
+`python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'`
+and put it in `backend/.env` or, for Docker, in the `.env` next to the compose files.
+
+**Connection test fails for every instance after a restart, log says
+"Instance token is stored unencrypted" or "Invalid encrypted token or decryption key".**
+The first message means tokens from a version before encryption are still in plain text;
+run `python scripts/encrypt_existing_tokens.py` once (inside the container:
+`docker compose exec backend python scripts/encrypt_existing_tokens.py`). The second means
+`ENCRYPTION_KEY` changed since the tokens were stored; restore the original key, or
+re-enter the tokens on the Instances page.
+
 **`ModuleNotFoundError`**. The virtual environment is not active or dependencies are not
 installed: `source venv/bin/activate && pip install -r requirements.txt`.
 

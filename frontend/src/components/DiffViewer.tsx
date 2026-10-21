@@ -35,6 +35,7 @@ import syncService from '../services/syncService';
 import { DiffResult, DataType, DiffField, SyncItem, SyncResult } from '../types';
 import DiffDisplay from './DiffDisplay';
 import useStore from '../store';
+import { getErrorMessage } from '../utils/errorTracking';
 
 const SYNC_POLL_INTERVAL_MS = 2000;
 const SYNC_POLL_TIMEOUT_MS = 5 * 60 * 1000;
@@ -106,8 +107,8 @@ function DiffViewer({
         has_differences: hasDifferences,
         destination_exists: destinationExists
       });
-    } catch (err: any) {
-      setError(err.message || 'Failed to load diff');
+    } catch (err) {
+      setError(getErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -119,12 +120,15 @@ function DiffViewer({
     }
   }, [open, loadDiff]);
 
-  const formatValue = (value: any): string => {
+  const formatValue = (value: string | number | boolean | string[] | number[] | null | undefined): string => {
     if (value === null || value === undefined) {
       return '(empty)';
     }
     if (typeof value === 'boolean') {
       return value ? 'Yes' : 'No';
+    }
+    if (Array.isArray(value)) {
+      return JSON.stringify(value, null, 2);
     }
     if (typeof value === 'object') {
       return JSON.stringify(value, null, 2);
@@ -202,9 +206,9 @@ function DiffViewer({
 
       // Reload the diff to show updated state
       await loadDiff();
-    } catch (err: any) {
+    } catch (err) {
       if (stillActive()) {
-        showSnackbar(err.message || 'Failed to sync item', 'error');
+        showSnackbar(getErrorMessage(err), 'error');
       }
     } finally {
       if (stillActive()) {

@@ -1,5 +1,5 @@
-from pydantic import BaseModel, Field, HttpUrl
-from typing import Optional, List, Dict, Any
+from pydantic import BaseModel, Field, HttpUrl, validator
+from typing import Optional, List, Dict, Any, Union, Literal
 from datetime import datetime
 from enum import Enum
 
@@ -80,9 +80,22 @@ class DataSnapshot(DataSnapshotBase):
 
 # Comparison Schemas
 class ComparisonRequest(BaseModel):
-    source_instance_id: int
-    destination_instance_id: int
+    """Request to compare data between two instances.
+
+    Validation rules:
+    - source and destination must be different
+    - instance IDs must be positive
+    """
+    source_instance_id: int = Field(..., gt=0)
+    destination_instance_id: int = Field(..., gt=0)
     force_refresh: bool = False
+
+    @validator('destination_instance_id')
+    def validate_different_instances(cls, v, values):
+        """Ensure source and destination are different."""
+        if 'source_instance_id' in values and v == values['source_instance_id']:
+            raise ValueError("Cannot compare an instance with itself")
+        return v
 
 
 class ComparisonItem(BaseModel):
@@ -96,8 +109,8 @@ class ComparisonItem(BaseModel):
 
 
 class ComparisonResult(BaseModel):
-    source_instance: Instance
-    destination_instance: Instance
+    source_instance: Optional[Instance] = None
+    destination_instance: Optional[Instance] = None
     data_type: DataType
     total_source: int
     total_destination: int
@@ -111,16 +124,31 @@ class ComparisonResult(BaseModel):
 
 # Diff Schemas
 class DiffRequest(BaseModel):
-    source_instance_id: int
-    destination_instance_id: int
+    """Request to get detailed diff for a specific item.
+
+    Validation rules:
+    - identifier: 1-255 characters
+    """
+    source_instance_id: int = Field(..., gt=0)
+    destination_instance_id: int = Field(..., gt=0)
     data_type: DataType
-    identifier: str
+    identifier: str = Field(..., min_length=1, max_length=255)
 
 
 class DiffField(BaseModel):
+    """Field-level difference between source and destination.
+
+    Values can be:
+    - str: Text content, HTML, identifiers
+    - int: IDs, sort orders
+    - bool: is_active, flags
+    - list[int]: store_id arrays
+    - list[str]: string arrays
+    - None: missing/empty values
+    """
     field_name: str
-    source_value: Any
-    destination_value: Any
+    source_value: Union[str, int, bool, List[int], List[str], None]
+    destination_value: Union[str, int, bool, List[int], List[str], None]
     is_different: bool
 
 
@@ -128,23 +156,65 @@ class DiffResult(BaseModel):
     identifier: str
     data_type: DataType
     fields: List[DiffField]
-    source_stores: List[str] = []
-    destination_stores: List[str] = []
+    source_stores: List[Union[int, str]] = []
+    destination_stores: List[Union[int, str]] = []
 
 
 # Sync Schemas
 class SyncItem(BaseModel):
-    identifier: str
-    action: str  # 'create' or 'update'
-    fields_to_sync: Optional[List[str]] = None  # If None, sync all fields
+    """Item to be synced from source to destination.
+
+    Validation rules:
+    - identifier: 1-255 characters
+    - action: must be 'create' or 'update'
+    - fields_to_sync: optional list of field names (max 50 fields)
+    """
+    identifier: str = Field(..., min_length=1, max_length=255)
+    action: Literal['create', 'update']
+    fields_to_sync: Optional[List[str]] = Field(None, max_length=50)
+
+    @validator('fields_to_sync')
+    def validate_field_names(cls, v):
+        """Validate that field names are from allowed set."""
+        if v is not None:
+            # Define valid fields for both blocks and pages
+            valid_fields = {
+                # Common fields
+                'title', 'content', 'active', 'is_active', 'store_id',
+                # Block-specific
+                'identifier', 'sort_order',
+                # Page-specific
+                'content_heading', 'page_layout', 'meta_title',
+                'meta_keywords', 'meta_description', 'url_key',
+                'layout_update_xml', 'custom_theme', 'custom_root_template',
+                'custom_layout_update_xml'
+            }
+            invalid_fields = [f for f in v if f not in valid_fields]
+            if invalid_fields:
+                raise ValueError(f"Invalid field names: {', '.join(invalid_fields)}")
+        return v
 
 
 class SyncRequest(BaseModel):
-    source_instance_id: int
-    destination_instance_id: int
+    """Request to synchronize items between instances.
+
+    Validation rules:
+    - source and destination must be different
+    - items list: 1-100 items
+    - store_view_mapping: maps source store IDs to destination store IDs
+    """
+    source_instance_id: int = Field(..., gt=0)
+    destination_instance_id: int = Field(..., gt=0)
     data_type: DataType
-    items: List[SyncItem]
+    items: List[SyncItem] = Field(..., min_length=1, max_length=100)
     store_view_mapping: Optional[Dict[str, str]] = None
+
+    @validator('destination_instance_id')
+    def validate_different_instances(cls, v, values):
+        """Ensure source and destination are different."""
+        if 'source_instance_id' in values and v == values['source_instance_id']:
+            raise ValueError("Source and destination instances must be different")
+        return v
 
 
 class SyncPreview(BaseModel):

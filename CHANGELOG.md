@@ -6,6 +6,9 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- Magento API tokens are encrypted at rest (Fernet) with the required `ENCRYPTION_KEY`
+  setting; `backend/scripts/encrypt_existing_tokens.py` converts tokens stored by earlier
+  versions. Request validation on the compare and sync endpoints.
 - `LICENSE` file (MIT).
 - Compare pages: an "Only in Destination" counter and filter; Ctrl/Cmd+K focuses the search box.
 - Backend test suite (pytest) running the application against a fake Magento 2.4 REST API
@@ -16,6 +19,8 @@ All notable changes to this project are documented here. The format follows
   Magento 2.4.9 instances.
 
 ### Changed
+- `POST /api/instances/` returns 201 and `DELETE /api/instances/{id}` returns 204.
+- Docker Compose is the supported deployment; the deployment guide covers only that path.
 - The API never returns Magento tokens any more; the edit form keeps the stored token when
   the field is left blank. Deleting an instance removes the sync history on both sides.
 - Sync runs left unfinished by a backend restart are marked failed at the next start instead

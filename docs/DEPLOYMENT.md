@@ -1,164 +1,114 @@
 # Deployment
 
-Two supported ways to run Magento CMS Sync: Docker Compose, or a manual install with
-uvicorn behind nginx. Either way, read [Access control](#access-control) first: the
-application has no login of its own.
+Magento CMS Sync is deployed with Docker Compose on a Linux host that runs Docker Engine
+with the Compose plugin. The stack is two containers: the API (`backend`) and the web UI
+(`frontend`, nginx serving the built interface and proxying `/api` to the API).
 
-## Docker Compose
+Before exposing it, read [Access control](#access-control): the application has no login
+of its own.
 
-Both compose files build two images: the backend (`python:3.11-slim`, uvicorn on port 8000)
-and the frontend (static build served by nginx, which proxies `/api` to the backend).
-
-### Development stack: `docker-compose.yml`
+## 1. Prepare the host
 
 ```bash
-docker compose up -d --build
+git clone https://github.com/florinel-chis/magento2-cms-sync.git /opt/cmssync
+cd /opt/cmssync
 ```
 
-- UI on http://localhost, API on http://localhost:8000 (also reachable through the UI origin
-  as `/api`).
-- The database and the snapshots are bind-mounted from `./backend/data`.
-
-### Production stack: `docker-compose.prod.yml`
+Generate the key that encrypts Magento API tokens in the database and put it, with the
+other settings, in a `.env` file next to the compose files (Compose reads it automatically):
 
 ```bash
-PORT=8080 CORS_ORIGINS=http://localhost:8080 docker compose -f docker-compose.prod.yml up -d --build
+python3 -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'
 ```
 
-- Publishes only the UI, on `PORT` (default 80). The API is reachable through `/api` on that
-  port; it is not published separately.
-- Data lives in the named volume `backend-data` (mounted at `/app/data`).
-- `CORS_ORIGINS` only matters if something other than the bundled UI calls the API from a
-  browser.
+```dotenv
+# /opt/cmssync/.env
+ENCRYPTION_KEY=<the generated key>
+PORT=8080                       # host port for the web UI (default 80)
+```
 
-### Upgrading
+Back the key up together with the data. Without it the stored tokens cannot be decrypted
+and every instance has to be re-entered.
+
+## 2. Start
 
 ```bash
+docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml ps        # backend must be "healthy"
+```
+
+The UI is on `http://<host>:<PORT>/`; the API is reachable through `/api` on the same
+port and is not published separately. Data (SQLite database and cached snapshots) lives in
+the named volume `backend-data`, mounted at `/app/data` in the API container.
+
+`docker-compose.yml` is the development variant: it publishes the API on port 8000 as well
+and bind-mounts `./backend/data` instead of using a volume.
+
+## 3. Put it behind TLS and a login
+
+Terminate HTTPS and require authentication in front of the UI port. With Caddy, which
+obtains certificates automatically:
+
+```caddyfile
+sync.example.com {
+    basic_auth {
+        admin <hash from: caddy hash-password>
+    }
+    reverse_proxy 127.0.0.1:8080
+}
+```
+
+Any reverse proxy works the same way (nginx, Traefik, a cloud load balancer): forward
+everything to the UI port, enforce HTTPS, require a login or restrict by network.
+
+## Upgrades
+
+```bash
+cd /opt/cmssync
 git pull
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-Tables are created automatically on first start. There is no migration tooling: a release
-that changes an existing table documents the manual step in the changelog.
+Database tables are created automatically; there is no migration tooling. A release that
+changes an existing table documents the manual step in `CHANGELOG.md`.
 
-### Backups
-
-Everything is under `/app/data` in the backend container: `cmssync.db` and `instances/`.
+Upgrading from a version that stored tokens unencrypted: after the first start with
+`ENCRYPTION_KEY` set, encrypt the existing rows once:
 
 ```bash
-# copy the data directory out of the running container
+docker compose -f docker-compose.prod.yml exec backend python scripts/encrypt_existing_tokens.py
+```
+
+## Backups
+
+Back up two things: the data volume and the `.env` file holding `ENCRYPTION_KEY`.
+
+```bash
 docker compose -f docker-compose.prod.yml cp backend:/app/data ./backup-$(date +%F)
+cp .env ./backup-$(date +%F)/
 ```
 
-Stop the backend first, or accept that a sync running at that moment may be half-recorded.
+Take the copy while no sync is running, or stop the backend first.
 
-## Manual installation
+## Health and logs
 
-### Backend
-
-```bash
-sudo mkdir -p /opt/cmssync && sudo chown $USER /opt/cmssync
-git clone https://github.com/florinel-chis/magento2-cms-sync.git /opt/cmssync
-cd /opt/cmssync/backend
-python3 -m venv venv && venv/bin/pip install -r requirements.txt
-cp .env.example .env            # adjust DATABASE_URL / data dir / CORS_ORIGINS if needed
-```
-
-systemd unit, `/etc/systemd/system/cmssync-backend.service`:
-
-```ini
-[Unit]
-Description=Magento CMS Sync backend
-After=network.target
-
-[Service]
-User=www-data
-Group=www-data
-WorkingDirectory=/opt/cmssync/backend
-ExecStart=/opt/cmssync/backend/venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-```
-
-```bash
-sudo chown -R www-data:www-data /opt/cmssync/backend
-sudo systemctl daemon-reload && sudo systemctl enable --now cmssync-backend
-curl http://127.0.0.1:8000/        # {"message":"Magento CMS Sync API","version":"1.0.0"}
-```
-
-Run a single uvicorn worker. Syncs are background tasks inside the process, and the SQLite
-database is not meant for several writers.
-
-### Frontend
-
-```bash
-cd /opt/cmssync/frontend
-npm ci
-npm run build                    # static files in build/
-```
-
-Leave `REACT_APP_API_URL` unset so the UI calls `/api` on its own origin.
-
-### nginx
-
-```nginx
-server {
-    listen 443 ssl http2;
-    server_name sync.example.com;
-    ssl_certificate     /etc/letsencrypt/live/sync.example.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/sync.example.com/privkey.pem;
-
-    # see "Access control" below
-    auth_basic           "Magento CMS Sync";
-    auth_basic_user_file /etc/nginx/cmssync.htpasswd;
-
-    root /opt/cmssync/frontend/build;
-    index index.html;
-
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
-
-    location /api/ {
-        proxy_pass http://127.0.0.1:8000/api/;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_read_timeout 600s;   # refreshes and syncs of large catalogs take a while
-    }
-
-    # optional: interactive API docs
-    location /docs    { proxy_pass http://127.0.0.1:8000/docs; }
-    location /openapi.json { proxy_pass http://127.0.0.1:8000/openapi.json; }
-}
-server {
-    listen 80;
-    server_name sync.example.com;
-    return 301 https://$host$request_uri;
-}
-```
+- `GET /` on the API returns a JSON greeting and is the container health check.
+- `docker compose -f docker-compose.prod.yml logs -f backend` shows the request log;
+  application logs are in `/app/logs/app.log` and `/app/logs/errors.log` inside the
+  container (rotated at 10 MB, five files kept).
 
 ## Access control
 
-The UI and the API have no authentication. Anyone who can reach them can read the stored
-Magento tokens and write to the connected stores. At minimum:
+The UI and the API have no users or authentication. Anyone who can reach them can read
+the connected stores' content and write to them, and the API accepts tokens for new
+instances. Keep the stack on a private network or behind a reverse proxy that requires a
+login, use HTTPS, and give each Magento token only the four permissions listed in the
+User Guide.
 
-- Serve the application only on a private network or VPN, or
-- Require a login at the reverse proxy (`htpasswd -c /etc/nginx/cmssync.htpasswd admin` for
-  the nginx example above), and
-- Use HTTPS between the browser and the tool, and between the tool and Magento.
+## Without Docker
 
-Give each Magento token only the four ACL resources the tool needs (see the User Guide).
-
-## Health and monitoring
-
-- `GET /` on the backend returns a JSON greeting; the Docker image uses it as its health
-  check (`docker ps` shows `healthy`).
-- Backend logs: `backend/logs/app.log` and `backend/logs/errors.log` (rotated at 10 MB, 5
-  files kept), relative to the working directory, plus uvicorn's access log on stdout
-  (`docker compose logs backend`, or `journalctl -u cmssync-backend`).
-- Disk: snapshots are small JSON files, but one per instance and type is rewritten on each
-  refresh; the SQLite database grows with the sync history.
+The API is a standard ASGI application: any process supervisor can run
+`uvicorn main:app --host 127.0.0.1 --port 8000` from `backend/` with the same environment
+variables, and any web server can serve `frontend/build` (from `npm run build`) while
+proxying `/api` to the API. This path is not maintained step by step; Docker Compose is the
+supported deployment.

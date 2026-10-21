@@ -24,6 +24,10 @@ python-multipart==0.0.18
 # Async File I/O (CRITICAL FIX for blocking I/O)
 aiofiles==23.2.1
 
+
+# Security (for token encryption)
+cryptography==42.0.8
+
 # Note: Removed unused dependencies
 # - python-jose[cryptography] (not used anywhere)
 # - passlib[bcrypt] (not used anywhere)

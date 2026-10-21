@@ -13,6 +13,7 @@ is needed for development: the test suite runs against a fake Magento REST API.
 cd backend
 python3 -m venv venv && source venv/bin/activate
 pip install -r requirements-dev.txt
+export ENCRYPTION_KEY=$(python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')
 uvicorn main:app --reload --port 8000        # http://localhost:8000/docs
 
 # frontend (in a second shell)
