@@ -6,7 +6,8 @@ the environment. Defaults are the values in `backend/config.py` and `frontend/sr
 ## Backend
 
 Settings are read from environment variables, or from a `backend/.env` file (environment
-variables win). Names are case-insensitive. `backend/.env.example` lists them all.
+variables win). Names are case-insensitive; unknown keys are ignored. `backend/.env.example`
+lists them all.
 
 | Variable | Default | Description |
 |---|---|---|

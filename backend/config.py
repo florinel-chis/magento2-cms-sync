@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = False
+        extra = "ignore"  # obsolete keys in an existing .env must not prevent startup
 
 
 settings = Settings()

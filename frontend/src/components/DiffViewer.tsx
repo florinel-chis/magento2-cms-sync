@@ -65,10 +65,14 @@ function DiffViewer({
   const [viewMode, setViewMode] = useState<'table' | 'split' | 'unified'>('table');
   const [syncing, setSyncing] = useState(false);
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
-  // True while the dialog is open and mounted; polling stops as soon as it flips to false
+  // True while the dialog is open and mounted; polling stops as soon as it flips to false.
+  // The session counter changes on every open/close, so a poll started in an earlier
+  // session can never resume when the dialog is reopened for another item.
   const pollingActive = useRef(false);
+  const syncSession = useRef(0);
 
   useEffect(() => {
+    syncSession.current += 1;
     pollingActive.current = open;
     if (!open) {
       setSyncing(false);
@@ -134,6 +138,9 @@ function DiffViewer({
     setConfirmDialogOpen(false);
 
 
+    const session = syncSession.current;
+    const stillActive = () => pollingActive.current && syncSession.current === session;
+
     try {
       setSyncing(true);
 
@@ -163,7 +170,7 @@ function DiffViewer({
       const deadline = Date.now() + SYNC_POLL_TIMEOUT_MS;
       while (result.status !== 'completed' && result.status !== 'failed') {
         if (Date.now() >= deadline) {
-          if (pollingActive.current) {
+          if (stillActive()) {
             showSnackbar(
               `Sync of ${title || identifier} is still running; check the Sync page for its status`,
               'warning'
@@ -172,11 +179,11 @@ function DiffViewer({
           return;
         }
         await new Promise<void>(resolve => setTimeout(resolve, SYNC_POLL_INTERVAL_MS));
-        if (!pollingActive.current) return;
+        if (!stillActive()) return;
         result = await syncService.getSyncStatus(started.sync_id);
       }
 
-      if (!pollingActive.current) return;
+      if (!stillActive()) return;
 
       if (result.status === 'failed') {
         showSnackbar(`Failed to sync: ${result.error_message || 'Unknown error'}`, 'error');
@@ -196,11 +203,11 @@ function DiffViewer({
       // Reload the diff to show updated state
       await loadDiff();
     } catch (err: any) {
-      if (pollingActive.current) {
+      if (stillActive()) {
         showSnackbar(err.message || 'Failed to sync item', 'error');
       }
     } finally {
-      if (pollingActive.current) {
+      if (stillActive()) {
         setSyncing(false);
       }
     }

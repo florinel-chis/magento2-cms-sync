@@ -28,6 +28,7 @@ All notable changes to this project are documented here. The format follows
   flashing a full-page spinner.
 - API error messages from validation failures are readable instead of "[object Object]";
   the unused login redirect on 401 responses is gone.
+- Unknown keys in `backend/.env` are ignored instead of aborting startup.
 - Comparison compares Magento's `active` flag and no longer compares `creation_time` and
   `update_time`, which differ between any two Magento servers.
 - `CORS_ORIGINS` accepts a comma-separated list (a JSON list still works).
