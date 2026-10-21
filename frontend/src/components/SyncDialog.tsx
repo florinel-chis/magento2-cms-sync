@@ -40,6 +40,9 @@ import syncService from '../services/syncService';
 import { DataType, SyncItem, SyncPreview, SyncResult } from '../types';
 import useStore from '../store';
 
+const SYNC_POLL_INTERVAL_MS = 2000;
+const SYNC_POLL_TIMEOUT_MS = 10 * 60 * 1000;
+
 interface SyncDialogProps {
   open: boolean;
   onClose: () => void;
@@ -86,6 +89,26 @@ export default function SyncDialog({
     }
     wasOpen.current = open;
   }, [open, items]);
+
+  // Status polling must stop as soon as the dialog closes or unmounts.
+  // The flag is checked before every setState and before scheduling the next poll;
+  // the pending timeout is cleared so no further request is made.
+  const pollingActive = useRef(false);
+  const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    pollingActive.current = open;
+    if (!open && pollTimeoutRef.current !== null) {
+      clearTimeout(pollTimeoutRef.current);
+      pollTimeoutRef.current = null;
+    }
+    return () => {
+      pollingActive.current = false;
+      if (pollTimeoutRef.current !== null) {
+        clearTimeout(pollTimeoutRef.current);
+        pollTimeoutRef.current = null;
+      }
+    };
+  }, [open]);
 
   const handlePreview = async () => {
     try {
@@ -155,11 +178,16 @@ export default function SyncDialog({
   };
 
   const pollSyncStatus = async (syncId: number) => {
+    const deadline = Date.now() + SYNC_POLL_TIMEOUT_MS;
+
     const poll = async () => {
+      if (!pollingActive.current) return;
+
       try {
         const status = await syncService.getSyncStatus(syncId);
+        if (!pollingActive.current) return;
         setSyncResult(status);
-        
+
         if (status.status === 'completed' || status.status === 'failed') {
           setSyncProgress(100);
           showSnackbar(
@@ -175,12 +203,23 @@ export default function SyncDialog({
         const total = status.items_synced + status.items_failed;
         const progress = total > 0 ? (total / selectedItems.length) * 100 : 0;
         setSyncProgress(progress);
-
-        // Continue polling
-        setTimeout(poll, 2000);
       } catch (error) {
         console.error('Failed to poll sync status:', error);
       }
+
+      if (!pollingActive.current) return;
+
+      // Hard stop: do not poll forever if the backend never reaches a terminal status
+      if (Date.now() >= deadline) {
+        showSnackbar(
+          'Sync is taking longer than expected; stopped polling. Check the Sync page for its status.',
+          'warning'
+        );
+        return;
+      }
+
+      // Continue polling
+      pollTimeoutRef.current = setTimeout(poll, SYNC_POLL_INTERVAL_MS);
     };
 
     poll();

@@ -1,5 +1,5 @@
 import api from './api';
-import { DataType, DataSnapshot } from '../types';
+import { DataType, DataSnapshot, InstanceDataSnapshots } from '../types';
 
 class DataService {
   async refreshInstanceData(instanceId: number, dataType: DataType): Promise<DataSnapshot> {
@@ -9,9 +9,9 @@ class DataService {
     return response.data;
   }
 
-  async getDataSnapshot(instanceId: number, dataType: DataType): Promise<DataSnapshot> {
-    // This could be extended to fetch snapshot info
-    const response = await api.get<DataSnapshot>(`/instances/${instanceId}/data/${dataType}`);
+  async getDataSnapshot(instanceId: number): Promise<InstanceDataSnapshots> {
+    // GET /instances/{id}/data-snapshots returns the latest blocks/pages snapshot summary
+    const response = await api.get<InstanceDataSnapshots>(`/instances/${instanceId}/data-snapshots`);
     return response.data;
   }
 }

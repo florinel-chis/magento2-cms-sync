@@ -80,20 +80,19 @@ export default function Sync() {
   const [activeSyncs, setActiveSyncs] = useState<SyncHistoryItem[]>([]);
   const [recentSyncs, setRecentSyncs] = useState<SyncHistoryItem[]>([]);
   const [statistics, setStatistics] = useState<SyncStatistics | null>(null);
-  const [loading, setLoading] = useState(true);
+  // Full-page spinner only for the first load; the 5 s refresh runs silently afterwards
+  const [initialLoading, setInitialLoading] = useState(true);
   const [selectedSync, setSelectedSync] = useState<number | null>(null);
   const [syncDetails, setSyncDetails] = useState<any>(null);
 
   const loadSyncData = useCallback(async () => {
     try {
-      setLoading(true);
-
       // Load statistics
       const statsResponse = await historyService.getStatistics('today');
       setStatistics(statsResponse);
 
       // Load active syncs (pending or in_progress)
-      const allSyncsResponse = await historyService.getHistory({
+      const allSyncsResponse = await historyService.getHistory<SyncHistoryItem>({
         skip: 0,
         limit: 50
       });
@@ -116,7 +115,7 @@ export default function Sync() {
       console.error('Failed to load sync data:', error);
       showSnackbar(error.message || 'Failed to load sync data', 'error');
     } finally {
-      setLoading(false);
+      setInitialLoading(false);
     }
   }, [showSnackbar]);
 
@@ -168,7 +167,7 @@ export default function Sync() {
     return <Chip label={config.label} color={config.color} size="small" />;
   };
 
-  if (loading) {
+  if (initialLoading) {
     return (
       <Box display="flex" justifyContent="center" mt={4}>
         <CircularProgress />

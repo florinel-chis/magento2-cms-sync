@@ -44,12 +44,15 @@ export default function InstanceFormModal({
     try {
       setLoading(true);
       const instance = await instanceService.getById(instanceId);
+      // The API never returns the stored token; the field starts empty in edit mode
+      // and an empty value means "keep the current token".
       setFormData({
         name: instance.name,
         url: instance.url,
-        api_token: instance.api_token,
+        api_token: '',
         is_active: instance.is_active,
       });
+      setErrors({});
     } catch (error: any) {
       showSnackbar(error.message || 'Failed to load instance', 'error');
       onClose();
@@ -90,7 +93,8 @@ export default function InstanceFormModal({
       }
     }
 
-    if (!formData.api_token.trim()) {
+    // Token is only mandatory when creating; when editing, blank keeps the current one
+    if (!instanceId && !formData.api_token.trim()) {
       newErrors.api_token = 'API token is required';
     }
 
@@ -111,9 +115,12 @@ export default function InstanceFormModal({
         const updateData: InstanceUpdate = {
           name: formData.name,
           url: formData.url,
-          api_token: formData.api_token,
           is_active: formData.is_active,
         };
+        // Omit api_token when blank so the backend keeps the stored token
+        if (formData.api_token.trim()) {
+          updateData.api_token = formData.api_token;
+        }
         await instanceService.update(instanceId, updateData);
         showSnackbar('Instance updated successfully', 'success');
       } else {
@@ -178,11 +185,12 @@ export default function InstanceFormModal({
               value={formData.api_token}
               onChange={(e) => handleChange('api_token', e.target.value)}
               error={!!errors.api_token}
-              helperText={errors.api_token}
+              helperText={errors.api_token || (instanceId ? 'Leave blank to keep the current token' : undefined)}
               fullWidth
-              required
+              required={!instanceId}
               disabled={loading}
               type="password"
+              autoComplete="new-password"
             />
             <FormControlLabel
               control={
