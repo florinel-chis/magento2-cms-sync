@@ -41,8 +41,12 @@ class InstanceUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
-class Instance(InstanceBase):
+class Instance(BaseModel):
+    """Instance as returned by the API: the token is write-only and never echoed back."""
     id: int
+    name: str
+    url: HttpUrl
+    is_active: bool
     created_at: datetime
     updated_at: datetime
     

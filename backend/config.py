@@ -7,9 +7,6 @@ class Settings(BaseSettings):
     # Database
     database_url: str = "sqlite+aiosqlite:///./cmssync.db"
     
-    # API Settings
-    api_prefix: str = "/api"
-    
     # Data Storage
     data_dir: Path = Path("data")
     instances_data_dir: Path = Path("data/instances")

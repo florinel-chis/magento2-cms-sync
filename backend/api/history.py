@@ -102,7 +102,7 @@ async def get_sync_history(
 
 @router.get("/statistics")
 async def get_sync_statistics(
-    period: str = Query("today", regex="^(today|week|month|all)$"),
+    period: str = Query("today", pattern="^(today|week|month|all)$"),
     db: AsyncSession = Depends(get_db)
 ):
     """Get sync statistics for dashboard"""

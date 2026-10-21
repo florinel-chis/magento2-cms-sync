@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, delete, or_
 from typing import List, Dict
 import httpx
 from pathlib import Path
@@ -8,7 +8,7 @@ import shutil
 import logging
 
 from models.database import get_db
-from models.models import Instance as InstanceModel, DataSnapshot
+from models.models import Instance as InstanceModel, DataSnapshot, SyncHistory
 from models.schemas import Instance, InstanceCreate, InstanceUpdate, InstanceTestResult
 from integrations.magento_client import MagentoClient
 from config import settings
@@ -160,6 +160,11 @@ async def delete_instance(
         )
     
     try:
+        # Sync history referencing this instance on either side goes with it
+        await db.execute(delete(SyncHistory).where(or_(
+            SyncHistory.source_instance_id == instance_id,
+            SyncHistory.destination_instance_id == instance_id,
+        )))
         # Delete instance from database first
         await db.delete(instance)
         await db.commit()

@@ -6,7 +6,8 @@ import logging
 from pathlib import Path
 
 from api import instances, compare, sync, history, test
-from models.database import init_db
+from api.sync import fail_abandoned_syncs
+from models.database import init_db, AsyncSessionLocal
 from config import settings
 from logging_config import setup_logging
 
@@ -22,11 +23,16 @@ async def lifespan(app: FastAPI):
     await init_db()
     logger.info("Database initialized")
 
-    # Create data directory for JSON storage
-    data_dir = Path("data")
-    data_dir.mkdir(exist_ok=True)
-    (data_dir / "instances").mkdir(exist_ok=True)
-    logger.info(f"Data directory created: {data_dir.absolute()}")
+    # Runs left behind by a previous process cannot continue; record them as failed
+    async with AsyncSessionLocal() as db:
+        abandoned = await fail_abandoned_syncs(db)
+    if abandoned:
+        logger.warning(f"Marked {abandoned} unfinished sync run(s) from a previous start as failed")
+
+    # Create data directories for JSON storage
+    settings.data_dir.mkdir(parents=True, exist_ok=True)
+    settings.instances_data_dir.mkdir(parents=True, exist_ok=True)
+    logger.info(f"Data directory: {settings.instances_data_dir.absolute()}")
 
     yield
 

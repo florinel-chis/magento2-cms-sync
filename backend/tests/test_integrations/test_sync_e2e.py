@@ -177,3 +177,60 @@ async def test_comparison_ignores_server_timestamps_and_detects_active_flag(api,
         "source_instance_id": src_id, "destination_instance_id": dst_id, "data_type": "blocks",
         "identifier": "footer_links_block"})).json()
     assert {f["field_name"] for f in diff["fields"]} == {"title", "content", "active", "sort_order"}
+
+
+async def test_api_never_returns_the_token_and_keeps_it_when_omitted_on_update(api, source_magento):
+    created = (await api.post("/api/instances/", json={
+        "name": "Source", "url": f"http://{SOURCE_HOST}", "api_token": TOKEN})).json()
+    assert "api_token" not in created
+    listed = (await api.get("/api/instances/")).json()
+    assert all("api_token" not in i for i in listed)
+    fetched = (await api.get(f"/api/instances/{created['id']}")).json()
+    assert "api_token" not in fetched
+
+    renamed = await api.put(f"/api/instances/{created['id']}", json={"name": "Source renamed"})
+    assert renamed.status_code == 200 and "api_token" not in renamed.json()
+    # the stored token still works, so it was kept
+    assert (await api.post(f"/api/instances/{created['id']}/test")).json()["success"] is True
+
+    comparison = (await api.post("/api/compare/blocks", json={
+        "source_instance_id": created["id"], "destination_instance_id": created["id"], "force_refresh": True})).json()
+    assert "api_token" not in comparison["source_instance"]
+
+
+async def test_deleting_an_instance_removes_history_on_both_sides(api):
+    src_id, dst_id = await _create_instances(api)
+    await api.post("/api/compare/blocks", json={
+        "source_instance_id": src_id, "destination_instance_id": dst_id, "force_refresh": True})
+    for s, d in ((src_id, dst_id), (dst_id, src_id)):
+        r = await api.post("/api/sync/blocks", json={
+            "source_instance_id": s, "destination_instance_id": d, "data_type": "blocks",
+            "items": [{"identifier": "footer_links_block", "action": "update"}]})
+        assert r.status_code == 200
+    assert (await api.get("/api/history/")).json()["total"] == 2
+
+    assert (await api.delete(f"/api/instances/{dst_id}")).status_code == 200
+    assert (await api.get("/api/history/")).json()["total"] == 0
+    assert (await api.get(f"/api/instances/{dst_id}")).status_code == 404
+
+
+async def test_startup_marks_abandoned_syncs_failed(api):
+    from api.sync import fail_abandoned_syncs, ABANDONED_MESSAGE
+    from models.database import AsyncSessionLocal
+    from models.models import SyncHistory
+    src_id, dst_id = await _create_instances(api)
+    async with AsyncSessionLocal() as db:
+        db.add(SyncHistory(source_instance_id=src_id, destination_instance_id=dst_id, sync_type="pages",
+                           sync_status="in_progress", sync_details={}))
+        db.add(SyncHistory(source_instance_id=src_id, destination_instance_id=dst_id, sync_type="blocks",
+                           sync_status="pending", sync_details={}))
+        db.add(SyncHistory(source_instance_id=src_id, destination_instance_id=dst_id, sync_type="blocks",
+                           sync_status="completed", items_synced=1, sync_details={}))
+        await db.commit()
+        assert await fail_abandoned_syncs(db) == 2
+
+    rows = (await api.get("/api/history/")).json()["items"]
+    statuses = sorted((r["sync_type"], r["sync_status"]) for r in rows)
+    assert statuses == [("blocks", "completed"), ("blocks", "failed"), ("pages", "failed")]
+    failed = [r for r in rows if r["sync_status"] == "failed"]
+    assert all(r["error_message"] == ABANDONED_MESSAGE and r["completed_at"] for r in failed)

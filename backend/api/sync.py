@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, update
 from typing import Dict, Any, List
 from datetime import datetime, timezone
 import logging
@@ -17,6 +17,26 @@ from integrations.magento_client import MagentoClient
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+ABANDONED_MESSAGE = "Abandoned: the backend restarted while this sync was running"
+
+
+async def fail_abandoned_syncs(db: AsyncSession) -> int:
+    """
+    Mark runs left pending/in progress by a previous process as failed.
+
+    Syncs execute as background tasks inside the API process, so a restart loses them;
+    without this their history rows would stay 'in_progress' forever.
+    """
+    result = await db.execute(
+        update(SyncHistory)
+        .where(SyncHistory.sync_status.in_([SyncStatus.PENDING.value, SyncStatus.IN_PROGRESS.value]))
+        .values(sync_status=SyncStatus.FAILED.value, completed_at=datetime.now(timezone.utc),
+                error_message=ABANDONED_MESSAGE)
+    )
+    await db.commit()
+    return result.rowcount or 0
 
 
 async def get_instance_or_404(db: AsyncSession, instance_id: int) -> Instance:
