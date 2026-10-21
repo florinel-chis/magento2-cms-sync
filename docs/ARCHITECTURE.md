@@ -17,7 +17,8 @@ Browser ──> React UI (frontend/, Material UI, Zustand)
            Magento 2 instances (REST API /rest/V1)
 ```
 
-The backend is a single process. Syncs run as FastAPI background tasks inside it.
+The backend is a single process. Syncs run as FastAPI background tasks inside it. At
+startup, runs left `pending` or `in_progress` by a previous process are marked `failed`.
 
 ## Data flow
 
@@ -43,7 +44,6 @@ SQLite via SQLAlchemy's async engine (`aiosqlite`). Tables are created at startu
 | `instances` | Name, URL, API token (plain text), active flag |
 | `data_snapshots` | One row per instance and content type: file path, item count, refresh time, store views |
 | `sync_history` | One row per sync run: instances, type, status, counts, timestamps, error, `sync_details` JSON |
-| `comparison_cache` | Defined in the models but never read or written |
 
 Snapshots are plain JSON arrays of the objects Magento returned, so they can be inspected
 or diffed with ordinary tools.
@@ -101,7 +101,8 @@ The test suite's fake Magento (`backend/tests/magento_stub`) reproduces these ru
 - The application itself has no users or authentication. Anyone who can reach the UI or
   the API can read tokens and write to the connected stores. Restrict network access or put
   a reverse proxy with authentication in front of it.
-- Magento tokens are stored unencrypted in SQLite and returned by the instances API.
+- Magento tokens are stored unencrypted in SQLite. The API accepts them but never returns
+  them.
 - The backend talks to Magento with whatever the token allows; grant only the four ACL
   resources above.
 
@@ -111,5 +112,6 @@ The test suite's fake Magento (`backend/tests/magento_stub`) reproduces these ru
 - Items with the same identifier in several store views collapse into one row.
 - Deletions are never propagated.
 - Comparisons read snapshots; stale snapshots give stale results.
-- A backend restart abandons running syncs; their history rows stay `in_progress`.
-- The History page loads the newest 100 runs and filters in the browser.
+- A backend restart abandons running syncs; they are recorded as failed at the next start
+  and have to be repeated.
+- The History page loads all runs (100 per request) and filters them in the browser.

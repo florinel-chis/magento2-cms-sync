@@ -146,15 +146,15 @@ The fake can also run as a standalone server for trying the UI without Magento
 
 - The application has **no authentication of its own**. Run it on a private network or
   behind a reverse proxy that requires login. Magento tokens are stored unencrypted in the
-  SQLite database and are returned by the instances API.
+  SQLite database (the API never returns them).
 - Items are matched by identifier only. Magento allows the same identifier once per store
   view; such duplicates collapse into a single row and may fail to sync.
 - Store-view assignment is not synchronised. Stock Magento's REST API does not expose it;
   created items land on the destination's default (all store views).
 - Deletions are never synchronised: items that exist only in the destination are reported,
   not removed.
-- A sync runs inside the API process. If the backend restarts mid-sync, that run stays
-  "in progress" in the history and has to be repeated.
+- A sync runs inside the API process. If the backend restarts mid-sync, that run is recorded
+  as failed at the next start and has to be repeated.
 
 ## License
 

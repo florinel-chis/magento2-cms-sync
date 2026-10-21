@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- `LICENSE` file (MIT).
+- Compare pages: an "Only in Destination" counter and filter; Ctrl/Cmd+K focuses the search box.
 - Backend test suite (pytest) running the application against a fake Magento 2.4 REST API
   (`backend/tests/magento_stub`), with a GitHub Actions workflow. The fake also runs as a
   standalone server for trying the UI without Magento.
@@ -14,6 +16,18 @@ All notable changes to this project are documented here. The format follows
   Magento 2.4.9 instances.
 
 ### Changed
+- The API never returns Magento tokens any more; the edit form keeps the stored token when
+  the field is left blank. Deleting an instance removes the sync history on both sides.
+- Sync runs left unfinished by a backend restart are marked failed at the next start instead
+  of staying "in progress" forever.
+- "Push to Destination" in the diff viewer waits for the sync to finish and reports the real
+  outcome. The header checkbox on the compare pages selects the syncable items of the
+  current filter instead of the whole comparison.
+- History loads every run (previously the newest 100), treats the end date as inclusive,
+  rounds durations, and exports properly quoted CSV. The Sync page refreshes without
+  flashing a full-page spinner.
+- API error messages from validation failures are readable instead of "[object Object]";
+  the unused login redirect on 401 responses is gone.
 - Comparison compares Magento's `active` flag and no longer compares `creation_time` and
   `update_time`, which differ between any two Magento servers.
 - `CORS_ORIGINS` accepts a comma-separated list (a JSON list still works).
@@ -23,7 +37,11 @@ All notable changes to this project are documented here. The format follows
 - Frontend: the "Same" counter no longer includes items that differ; block rows show the
   real active flag; environment examples list only the variables the code reads.
 
+### Removed
+- The unused `API_PREFIX` setting and the never-used `comparison_cache` table.
+
 ### Fixed
+- The frontend's data-snapshot helper called an endpoint that does not exist.
 - Sync created items with the source's internal id in the payload, which on Magento updates
   (or overwrites) the destination entity with that id instead of creating one, and block
   updates failed on a `block_id` field Magento never returns.

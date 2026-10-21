@@ -16,16 +16,16 @@ health check.
 
 ## Instances
 
-An instance is a Magento store: `{id, name, url, api_token, is_active, created_at, updated_at}`.
-Note that `api_token` is returned in clear text by every instance response.
+An instance is a Magento store: `{id, name, url, is_active, created_at, updated_at}`. The
+API token is write-only: it is accepted on create and update but never returned.
 
 | Method and path | Description |
 |---|---|
 | `GET /api/instances/?skip=0&limit=100` | List instances. |
 | `POST /api/instances/` | Create. Body: `{"name", "url", "api_token", "is_active": true}`. `url` must be an absolute http(s) URL. 400 `Instance with this name already exists`. |
 | `GET /api/instances/{id}` | One instance. 404 `Instance not found`. |
-| `PUT /api/instances/{id}` | Partial update; any of `name`, `url`, `api_token`, `is_active`. 400 on a name clash. |
-| `DELETE /api/instances/{id}` | Deletes the instance, its snapshot files and the sync history where it was the source. Returns `{"message": "Instance deleted successfully"}`. |
+| `PUT /api/instances/{id}` | Partial update; any of `name`, `url`, `api_token`, `is_active`. Omit `api_token` to keep the stored one. 400 on a name clash. |
+| `DELETE /api/instances/{id}` | Deletes the instance, its snapshot files and every sync history run it took part in, as source or destination. Returns `{"message": "Instance deleted successfully"}`. |
 | `POST /api/instances/{id}/test` | Calls Magento's `store/storeViews`. Returns `{"success", "message", "version": null, "store_views": [...]}`; `success` is false with `Authentication failed. Please check your API token.` on 401, `HTTP error: <code>` on other HTTP errors, or `Connection failed: <reason>`. Always HTTP 200. |
 | `GET /api/instances/{id}/data-snapshots` | `{"instance_id", "blocks": {"count", "last_updated"} \| null, "pages": ...}` for the latest snapshots. |
 | `GET /api/instances/data-snapshots/all` | The same for every instance, keyed by instance id (`lastUpdated` camel-cased). |
@@ -106,7 +106,9 @@ live from Magento, strips ids and timestamps from the payload, then `POST`s crea
 `details` for individual failures (each carries Magento's message). `failed` means the run
 itself aborted, for example when the source snapshot was missing or the destination could
 not be listed; `error_message` says why. After a completed run the destination snapshot is
-refreshed.
+refreshed. Runs that were still `pending` or `in_progress` when the backend process stopped
+are marked `failed` with the message `Abandoned: the backend restarted while this sync was
+running` at the next start.
 
 ```bash
 curl -s -X POST http://localhost:8000/api/sync/pages -H 'Content-Type: application/json' -d @sync.json

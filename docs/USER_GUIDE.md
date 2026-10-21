@@ -57,12 +57,15 @@ Each row shows:
   that content type from Magento again and replaces the snapshot.** Do this after content
   changes in Magento, because comparisons read the snapshots, not the live store.
 - **Test Connection** (antenna icon) calls the store's `store/storeViews` endpoint with the
-  token. "Connection test successful" means the URL and the token work; "Authentication
-  failed" means the token was rejected; "HTTP error: 404" usually means the URL is not the
-  Magento base URL.
+  token. "Connection successful (N store views)" means the URL and the token work;
+  "Authentication failed" means the token was rejected; "HTTP error: 404" usually means the
+  URL is not the Magento base URL.
 
-Deleting an instance removes its cached snapshots and the history of syncs **from** it.
-History entries where it was the destination remain and show "Unknown" as the destination.
+When editing, the API Token field is empty; leave it empty to keep the stored token, or paste
+a new one to replace it. The tool never displays a stored token.
+
+Deleting an instance removes its cached snapshots and every sync history run it took part
+in, as source or destination.
 
 ## Compare Blocks and Compare Pages
 
@@ -74,10 +77,9 @@ History entries where it was the destination remain and show "Unknown" as the de
    instance has no snapshot yet, it is fetched from Magento first; otherwise refresh it on the
    *Instances* page when you need current data.
 
-The summary line reads "Total: X in source, Y in destination" followed by three counters:
-items that are the **Same**, items that are **Different**, and items **Missing** in the
-destination. Items that exist only in the destination are listed in the table (status
-*Only in Destination*) but not counted in the chips.
+The summary line reads "Total: X in source, Y in destination" followed by four counters:
+items that are the **Same**, items that are **Different**, items **Missing** in the
+destination, and items that exist **Only in Destination**.
 
 | Row status | Meaning |
 |---|---|
@@ -88,16 +90,18 @@ destination. Items that exist only in the destination are listed in the table (s
 
 Which fields are compared is listed under [What counts as different](#what-counts-as-different).
 
-- **Status Filter**: *All Items*, *Missing* (missing in destination), *Different*, *Same*.
-  "Only in Destination" rows appear under *All Items*.
+- **Status Filter**: *All Items*, *Missing* (missing in destination), *Different*, *Same*,
+  *Only in Destination*.
 - **Search** matches the identifier and the titles on either side, case-insensitively.
+  Ctrl+K (Cmd+K on macOS) focuses the search box.
 - **View Details** (chevron) expands the row with the store views, active flag and, for
   pages, the page layout on each side, plus the names of the fields that differ.
 - **View Diff** (eye) opens the [diff viewer](#diff-viewer); it is available for *Different*
   rows.
 - **Checkboxes** appear on rows that can be synced: *Different* and *Missing in Destination*.
-  The checkbox in the header selects every syncable item of the whole comparison, not just
-  the filtered or visible rows. As soon as something is selected, a **Sync N items** button
+  The checkbox in the header selects or clears every syncable item in the **current filtered
+  list** (all its pages), leaving selections outside the filter untouched, so you can combine
+  filters to build a selection. As soon as something is selected, a **Sync N items** button
   opens the [sync wizard](#sync-wizard).
 
 The table is paginated client-side (25 rows by default).
@@ -127,9 +131,11 @@ The diff viewer shows the fields that differ for one item, in three modes:
 Empty values show as "(empty)" and booleans as Yes/No.
 
 **Push to Destination** syncs this single item (create if it is missing, otherwise update)
-after a confirmation that warns the destination content will be overwritten. The sync runs
-in the background: the success message appears when the sync has been *started*. Check the
-[History](#history) page for the result, then click *Compare* again.
+after a confirmation that warns the destination content will be overwritten. The button
+reads "Syncing..." until the sync has finished, then reports "Synced ... to destination" or
+the error Magento returned, and the diff reloads. If a sync is still running after five
+minutes, you are pointed to the Sync page instead. Click *Compare* again afterwards to
+refresh the row status.
 
 ## Sync wizard
 
@@ -172,14 +178,13 @@ continues in the background and appears in the history.
 
 ## History
 
-*History* (Alt+5) lists the most recent 100 sync runs, newest first, with date, source and
-destination, type, status, item counts and duration. Filters for status, type, source,
-destination and date range are applied in the browser to those 100 records. **View Details**
-shows the run's ids, timestamps, total items and error message.
+*History* (Alt+5) lists every sync run, newest first, with date, source and destination,
+type, status, item counts and duration. Filters for status, type, source, destination and
+date range (both dates inclusive) are applied in the browser. **View Details** shows the
+run's ids, timestamps, total items and error message.
 
 **Export CSV** downloads the currently filtered rows as `sync-history-YYYY-MM-DD.csv` with the
 columns Date, Source, Destination, Type, Status, Items Synced, Items Failed and Duration.
-Values are not quoted, so instance names containing commas will shift columns.
 
 The per-item messages of a run are available through the API
 (`GET /api/history/{sync_id}`, see [API.md](API.md)).
@@ -187,8 +192,9 @@ The per-item messages of a run are available through the API
 ## Keyboard shortcuts
 
 Alt+1 to Alt+5 switch between Instances, Compare Blocks, Compare Pages, Sync and History
-when the focus is not in a text field. Whether the browser and operating system pass the
-combination through depends on the platform.
+when the focus is not in a text field; Ctrl+K (Cmd+K) focuses the search box on the compare
+pages. Whether the browser and operating system pass the combinations through depends on
+the platform.
 
 ## Typical workflows
 
@@ -219,4 +225,5 @@ unless you start a sync.
 - **No deletions.** Items that exist only in the destination are reported, never removed.
 - **Snapshots, not live data.** Comparisons use cached content; refresh before deciding.
 - **One backend process.** A sync runs inside the API process. If the backend is restarted
-  while a sync runs, the history row stays "in progress"; run the sync again.
+  while a sync runs, the run is marked failed ("Abandoned: the backend restarted ...") at the
+  next start; compare again and sync what is left.

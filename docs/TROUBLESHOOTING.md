@@ -89,18 +89,17 @@ Magento APIs. The item is skipped.
 with a 401 in `error_message`. The destination token expired or was revoked mid-run. Update
 the token on the Instances page and run the sync again.
 
-**A run stays "In Progress" or "Pending" forever.**
-The backend was restarted while the sync ran; the row is never updated. Run the sync again.
-To tidy the history:
+**A run shows "Failed" with "Abandoned: the backend restarted while this sync was running".**
+The backend process stopped while the sync ran; whatever it had already sent to Magento
+stayed there. Compare again and sync the remaining items.
 
-```bash
-sqlite3 backend/cmssync.db "UPDATE sync_history SET sync_status='failed',
-  error_message='abandoned: backend restarted' WHERE sync_status IN ('pending','in_progress');"
-```
+**A run stays "In Progress" or "Pending" while the backend is running.**
+Look at the backend log for a traceback; the run can be marked failed with
+`sqlite3 backend/cmssync.db "UPDATE sync_history SET sync_status='failed' WHERE id=<id>"`.
 
-**"Push to Destination" said success but the diff still shows differences.**
-The button starts the sync in the background and reports that it was started. Wait a
-moment, check History, and open the diff or compare again.
+**"Push to Destination" reports that the sync is still running after five minutes.**
+The run continues in the background; follow it on the Sync page or in History. Very large
+pages or a slow destination can take that long.
 
 ## Where to look
 
