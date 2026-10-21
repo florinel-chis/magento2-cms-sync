@@ -38,18 +38,11 @@ class SyncService:
         # Start with source item copy
         sync_data = source_item.copy()
         
-        # If updating existing item, preserve some destination fields
+        # Magento saves whatever entity id is in the request body, so the id must be the
+        # destination's on update and absent on create. The core REST interfaces expose
+        # only "id"; "block_id" / "page_id" exist solely on installs that extend the API.
+        id_fields = ("id", "block_id", "page_id")
         if dest_item:
-            # Always preserve the ID for updates
-            if data_type == DataType.BLOCKS:
-                sync_data["id"] = dest_item["id"]
-                sync_data["block_id"] = dest_item["block_id"]
-            else:  # DataType.PAGES
-                sync_data["id"] = dest_item["id"]
-                # Only copy page_id if it exists
-                if "page_id" in dest_item:
-                    sync_data["page_id"] = dest_item["page_id"]
-            
             # If specific fields are selected, only sync those
             if fields_to_sync:
                 # Start with destination item and update only selected fields
@@ -57,6 +50,16 @@ class SyncService:
                 for field in fields_to_sync:
                     if field in source_item:
                         sync_data[field] = source_item[field]
+            for field in id_fields:
+                if field in dest_item:
+                    sync_data[field] = dest_item[field]
+                else:
+                    sync_data.pop(field, None)
+        else:
+            # Create: a leftover source id would make Magento update (or overwrite) the
+            # destination entity that happens to have that id instead of inserting.
+            for field in id_fields:
+                sync_data.pop(field, None)
         
         # Apply store view mapping
         if store_view_mapping and "store_id" in sync_data:
