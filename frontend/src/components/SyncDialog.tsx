@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -72,13 +72,18 @@ export default function SyncDialog({
 
   const steps = ['Select Items', 'Preview Changes', 'Execute Sync'];
 
+  // Reset only when the dialog transitions to open. The parent re-renders `items` after
+  // a sync completes (it reloads the comparison), and resetting on every `items` change
+  // used to throw the wizard back to step 1 and discard the result it was showing.
+  const wasOpen = useRef(false);
   useEffect(() => {
-    if (open) {
+    if (open && !wasOpen.current) {
       setActiveStep(0);
       setSelectedItems(items.map(i => i.identifier));
       setSyncResult(null);
       setPreview(null);
     }
+    wasOpen.current = open;
   }, [open, items]);
 
   const handlePreview = async () => {

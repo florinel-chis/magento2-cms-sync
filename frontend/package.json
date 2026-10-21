@@ -41,9 +41,6 @@
       "react-app/jest",
       "prettier"
     ],
-    "plugins": [
-      "react-hooks"
-    ],
     "rules": {
       "react-hooks/rules-of-hooks": "error",
       "react-hooks/exhaustive-deps": "warn"
@@ -66,7 +63,6 @@
     "@types/node": "^22.10.0",
     "@types/react-router-dom": "^5.3.3",
     "eslint-config-prettier": "^9.1.0",
-    "eslint-plugin-react-hooks": "^5.0.0",
     "prettier": "^3.4.2"
   }
 }

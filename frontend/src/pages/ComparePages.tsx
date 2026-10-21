@@ -37,7 +37,7 @@ import {
 } from '@mui/icons-material';
 import useStore from '../store';
 import comparisonService from '../services/comparisonService';
-import { DataType, ComparisonStatus, ComparisonItem } from '../types';
+import { DataType, ComparisonStatus, ComparisonItem, CMSPage } from '../types';
 import DiffViewer from '../components/DiffViewer';
 import SyncDialog from '../components/SyncDialog';
 
@@ -412,11 +412,11 @@ export default function ComparePages() {
                                       </TableRow>
                                       <TableRow>
                                         <TableCell component="th" scope="row">Active (Source)</TableCell>
-                                        <TableCell>{item.source_data.active === '1' ? 'Yes' : 'No'}</TableCell>
+                                        <TableCell>{item.source_data.active ? 'Yes' : 'No'}</TableCell>
                                       </TableRow>
                                       <TableRow>
                                         <TableCell component="th" scope="row">Page Layout (Source)</TableCell>
-                                        <TableCell>{item.source_data.page_layout || 'Default'}</TableCell>
+                                        <TableCell>{(item.source_data as CMSPage).page_layout || 'Default'}</TableCell>
                                       </TableRow>
                                     </>
                                   )}
@@ -428,11 +428,11 @@ export default function ComparePages() {
                                       </TableRow>
                                       <TableRow>
                                         <TableCell component="th" scope="row">Active (Destination)</TableCell>
-                                        <TableCell>{item.destination_data.active === '1' ? 'Yes' : 'No'}</TableCell>
+                                        <TableCell>{item.destination_data.active ? 'Yes' : 'No'}</TableCell>
                                       </TableRow>
                                       <TableRow>
                                         <TableCell component="th" scope="row">Page Layout (Destination)</TableCell>
-                                        <TableCell>{item.destination_data.page_layout || 'Default'}</TableCell>
+                                        <TableCell>{(item.destination_data as CMSPage).page_layout || 'Default'}</TableCell>
                                       </TableRow>
                                     </>
                                   )}
