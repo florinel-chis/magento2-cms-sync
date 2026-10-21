@@ -13,7 +13,19 @@ A powerful web-based tool for synchronizing CMS content (blocks and pages) betwe
 - 🔐 **Secure API Integration**: Connect to Magento instances using REST API tokens
 - 🚀 **High Performance**: Asynchronous operations with background task processing
 
-![Magento CMS Sync Screenshot](doc/magento2-cms-sync.png)
+![Compare CMS pages between two instances](doc/magento2-cms-sync.png)
+
+## Screenshots
+
+All screenshots were taken against two real Magento 2.4.9 instances (see
+[docs/LOCAL_MAGENTO_INSTANCES.md](docs/LOCAL_MAGENTO_INSTANCES.md)).
+
+| | |
+|---|---|
+| **Instances** with cached block/page counts and connection test<br>![Instances](doc/instances.png) | **Compare pages**, filtered to the items that differ<br>![Different items](doc/compare-pages-different.png) |
+| **Diff viewer** (table, split or unified)<br>![Diff viewer](doc/magento2-cms-sync-diff.png) | **Sync wizard, step 1**: pick creates and updates<br>![Select items](doc/sync-select-items.png) |
+| **Sync wizard, step 2**: preview the changeset<br>![Preview](doc/sync-preview.png) | **Sync wizard, step 3**: per-item result<br>![Result](doc/sync-result.png) |
+| **After the sync**: nothing left to do<br>![After sync](doc/compare-pages-after-sync.png) | **History** with filters and CSV export<br>![History](doc/history.png) |
 
 ## Quick Start with Docker
 
@@ -95,8 +107,9 @@ LOG_LEVEL=INFO
 Create a `.env` file in the frontend directory:
 
 ```env
-# API URL
-REACT_APP_API_URL=http://localhost:8000
+# Backend API base URL, INCLUDING the /api prefix.
+# Leave it unset in development: the dev server proxies /api to http://localhost:8000.
+REACT_APP_API_URL=http://localhost:8000/api
 
 # Port (optional)
 PORT=3000
@@ -124,6 +137,13 @@ python -m tests.magento_stub --port 8082 --token secret --seed demo-dest   # dri
 ```
 
 See `backend/tests/magento_stub/README.md` for the full behaviour list.
+
+## Testing With Two Real Magento Instances
+
+For end-to-end verification against real Magento, [docs/LOCAL_MAGENTO_INSTANCES.md](docs/LOCAL_MAGENTO_INSTANCES.md)
+describes a two-instance setup on one machine: a clone of an existing install, each
+served by PHP's built-in server on its own port, with its own database, Redis
+databases and OpenSearch index prefix, plus long-lived API tokens.
 
 ## Usage Guide
 
@@ -157,7 +177,6 @@ See `backend/tests/magento_stub/README.md` for the full behaviour list.
 2. Review the changes in the visual diff viewer
 3. Click "Push to Destination" to sync that item
 
-![Diff Viewer Screenshot](doc/magento2-cms-sync-diff.png)
 
 #### Bulk Sync
 1. Select multiple items using checkboxes

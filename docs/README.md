@@ -24,6 +24,7 @@
 | [GIT_FLOW_GUIDE.md](./GIT_FLOW_GUIDE.md) | Complete Git Flow workflow guide | When working on features/releases |
 | [../.claude/QUICK_REFERENCE.md](../.claude/QUICK_REFERENCE.md) | **Command cheat sheet** - Keep open | Every day |
 | [MANUAL_TESTING_CHECKLIST.md](./MANUAL_TESTING_CHECKLIST.md) | QA and testing checklist | Before releases |
+| [LOCAL_MAGENTO_INSTANCES.md](./LOCAL_MAGENTO_INSTANCES.md) | Two real Magento instances on one machine for end-to-end testing and screenshots | Manual QA, docs |
 
 ### 📊 For Team Leads
 

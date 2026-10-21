@@ -17,7 +17,7 @@ A comprehensive code review has identified **critical issues** that MUST be avoi
 3. **N+1 query problems** - `history.py` loads instances in loops instead of using `selectinload()`
 4. **Plaintext API tokens** - Security vulnerability in `models.py`
 5. **Missing error logging** - No structured logging anywhere
-6. **Zero tests** - No pytest tests exist
+6. ~~Zero tests~~ - Fixed: `backend/tests` runs the app against a fake Magento REST API (`tests/magento_stub`); keep it green
 
 ### 🔴 Frontend Critical Issues
 1. **30+ `any` type usages** - Defeats TypeScript in `types/index.ts`, service layers
@@ -130,9 +130,14 @@ Phase 2: Execute
 ```
 
 ### 4. Comparison by Identifier
-- **CMS Blocks**: Match by `identifier` field
-- **CMS Pages**: Match by `url_key` field
+- **CMS Blocks** and **CMS Pages**: match by `identifier` (Magento's REST output has no `url_key`;
+  it is only read as a fallback for installs that extend the API)
+- **Compared fields**: content fields plus `active`. Never compare `creation_time`/`update_time`:
+  Magento sets them server-side, so they differ between any two real instances
 - **Statuses**: `MISSING`, `DIFFERENT`, `SAME`
+- **Magento REST shapes**: blocks expose `id, identifier, title, content, creation_time, update_time, active`;
+  pages add the layout/meta fields. There is no `store_id`, `is_active`, `block_id` or `page_id` on
+  stock Magento, and Magento rejects unknown input properties (see `backend/tests/magento_stub/README.md`)
 
 ---
 
@@ -337,18 +342,18 @@ interface CMSBlock {
   identifier: string;
   title: string;
   content: string;
-  is_active: boolean;
-  store_id: number[];
+  active?: boolean;      // Magento REST spelling; is_active/store_id only on extended installs
+  store_id?: number[];
 }
 
 interface CMSPage {
   id: number;
   identifier: string;
   title: string;
-  url_key: string;
   content: string;
-  is_active: boolean;
-  store_id: number[];
+  active?: boolean;
+  page_layout?: string;
+  store_id?: number[];
 }
 
 interface ComparisonItem {
@@ -434,10 +439,10 @@ useEffect(() => {
 
 **Why this is critical**: Missing dependencies cause stale closures. Functions capture old versions of state/props, leading to bugs where the UI shows outdated data or callbacks don't work correctly.
 
-**Fix**: Install `eslint-plugin-react-hooks` to catch these automatically:
-```bash
-npm install --save-dev eslint-plugin-react-hooks
-```
+**Fix**: the `react-app` ESLint config already registers `eslint-plugin-react-hooks`; the rules are
+enabled in `package.json` → `eslintConfig.rules`. Do NOT add the plugin as a direct devDependency:
+a second copy makes CRA fail with `Plugin "react-hooks" was conflicted between "package.json" and
+"package.json » eslint-config-react-app"`.
 
 **Files to fix**:
 - `frontend/src/pages/Instances.tsx:60-68`
@@ -767,7 +772,8 @@ npm run build                  # Verify build
 5. Execute sync → Check history
 6. Verify data refreshed after sync
 
-See `docs/MANUAL_TESTING_CHECKLIST.md` for complete checklist.
+See `docs/MANUAL_TESTING_CHECKLIST.md` for complete checklist, and
+`docs/LOCAL_MAGENTO_INSTANCES.md` for running two real Magento instances locally.
 
 ---
 
