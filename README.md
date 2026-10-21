@@ -51,10 +51,10 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 # Install dependencies
 pip install -r requirements.txt
 
-# Run database migrations
-alembic upgrade head
+# Required: key used to encrypt Magento API tokens at rest (keep it with your backups)
+export ENCRYPTION_KEY=$(python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')
 
-# Start the server
+# Start the server (database tables are created on first start)
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
@@ -77,18 +77,17 @@ npm start
 Create a `.env` file in the backend directory:
 
 ```env
-# Database
-DATABASE_URL=sqlite:///./cmssync.db
+# Required: Fernet key for encrypting Magento API tokens at rest
+ENCRYPTION_KEY=<generated key>
 
-# Security
-SECRET_KEY=your-secret-key-here
+# Database (async driver required)
+DATABASE_URL=sqlite+aiosqlite:///./cmssync.db
 
 # CORS Origins (comma-separated)
 CORS_ORIGINS=http://localhost:3000,http://localhost:3001
-
-# Logging
-LOG_LEVEL=INFO
 ```
+
+See `backend/.env.example` for every setting.
 
 ### Frontend Environment Variables
 
@@ -251,8 +250,7 @@ npm run format   # Prettier
    - Restart the backend server
 
 3. **Database errors**
-   - Delete cmssync.db and restart backend
-   - Run migrations: `alembic upgrade head`
+   - Stop the backend, delete `cmssync.db` and start it again; the tables are recreated
 
 4. **Sync failures**
    - Check Magento API token permissions
