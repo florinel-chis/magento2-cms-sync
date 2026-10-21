@@ -12,7 +12,7 @@ Shapes follow Magento 2.4 (`Magento\Cms\Api\Data\BlockInterface`, `PageInterface
 | Method | Path | Notes |
 |---|---|---|
 | GET | `/rest/V1/store/storeViews` | admin + default store views |
-| GET | `/rest/V1/cmsBlock/search`, `/rest/V1/cmsPage/search` | `searchCriteria` required; `pageSize`, `currentPage`, `filter_groups` (eq, neq, like, in, nin, null, notnull) |
+| GET | `/rest/V1/cmsBlock/search`, `/rest/V1/cmsPage/search` | `searchCriteria` required; `pageSize`, `currentPage`, `filter_groups` (eq, neq, like, nlike, in, nin, null, notnull) on database columns (`block_id`/`page_id`, `is_active`, `store_id`, `identifier`, `title`, ...), not on response keys |
 | GET | `/rest/V1/cmsBlock/{id}`, `/rest/V1/cmsPage/{id}` | 404 with Magento's message when missing |
 | POST | `/rest/V1/cmsBlock`, `/rest/V1/cmsPage` | body wrapped in `block` / `page` |
 | PUT | `/rest/V1/cmsBlock/{id}`, `/rest/V1/cmsPage/{id}` | the URL id is ignored, like Magento |
@@ -27,7 +27,12 @@ Shapes follow Magento 2.4 (`Magento\Cms\Api\Data\BlockInterface`, `PageInterface
   `FakeMagento(emit_store_id=True)` opts in to `store_id` for extended installs.
 - Nullable fields that are NULL (for example `custom_theme` on stock pages) are omitted.
 - Unknown input properties are rejected with 400
-  (`Property "X" does not have accessor method "getX" ...`).
+  (`Property "X" does not have accessor method "getX" ...`). That includes `is_active`:
+  the only accepted spelling on input is `active`. `FakeMagento(strict_properties=False)`
+  accepts `is_active` and ignores unknown keys instead.
+- Filtering on a response key that is not a column (`id`, `active`) is a SQL error on
+  Magento and comes back as the generic 500 `Internal Error`. LIKE follows SQL semantics
+  (`%`, `_`, backslash escapes).
 - A POST whose body contains `id` saves that entity: an existing id is overwritten,
   identifier included; an unknown id fails with 400.
 - Duplicate identifiers in overlapping stores are rejected with Magento's messages.

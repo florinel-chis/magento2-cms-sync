@@ -69,18 +69,43 @@ async def test_search_paginates_and_clamps_to_last_page(magento_http, magento):
     assert len(r.json()["items"]) == 253
 
 
-async def test_search_filters(magento_http):
+async def test_search_filters_use_database_columns(magento_http):
     r = await magento_http.get("/rest/V1/cmsBlock/search", params={
         "searchCriteria[filter_groups][0][filters][0][field]": "identifier",
         "searchCriteria[filter_groups][0][filters][0][value]": "contact-us-info"})
     assert [b["identifier"] for b in r.json()["items"]] == ["contact-us-info"]
+    # AND across groups, OR inside a group; booleans filter as tinyint, ids by column name
     r = await magento_http.get("/rest/V1/cmsBlock/search", params={
-        "searchCriteria[filter_groups][0][filters][0][field]": "identifier",
-        "searchCriteria[filter_groups][0][filters][0][value]": "%_%",
-        "searchCriteria[filter_groups][0][filters][0][condition_type]": "like",
-        "searchCriteria[filter_groups][1][filters][0][field]": "active",
-        "searchCriteria[filter_groups][1][filters][0][value]": "True"})
+        "searchCriteria[filter_groups][0][filters][0][field]": "block_id",
+        "searchCriteria[filter_groups][0][filters][0][value]": "1,3",
+        "searchCriteria[filter_groups][0][filters][0][condition_type]": "in",
+        "searchCriteria[filter_groups][1][filters][0][field]": "is_active",
+        "searchCriteria[filter_groups][1][filters][0][value]": "1"})
     assert [b["identifier"] for b in r.json()["items"]] == ["footer_links_block"]
+    r = await magento_http.get("/rest/V1/cmsBlock/search", params={
+        "searchCriteria[filter_groups][0][filters][0][field]": "store_id",
+        "searchCriteria[filter_groups][0][filters][0][value]": "0"})
+    assert r.json()["total_count"] == 3
+    # response keys are not columns: Magento's SQL error surfaces as a generic 500
+    for bad in ("id", "active"):
+        r = await magento_http.get("/rest/V1/cmsBlock/search", params={
+            "searchCriteria[filter_groups][0][filters][0][field]": bad,
+            "searchCriteria[filter_groups][0][filters][0][value]": "1"})
+        assert r.status_code == 500 and r.json()["message"].startswith("Internal Error.")
+
+
+async def test_like_filter_has_sql_wildcard_semantics(magento_http):
+    async def like(pattern):
+        r = await magento_http.get("/rest/V1/cmsBlock/search", params={
+            "searchCriteria[filter_groups][0][filters][0][field]": "identifier",
+            "searchCriteria[filter_groups][0][filters][0][value]": pattern,
+            "searchCriteria[filter_groups][0][filters][0][condition_type]": "like"})
+        return [b["identifier"] for b in r.json()["items"]]
+    assert await like("%_%") == ["footer_links_block", "contact-us-info", "sale_coupon"]  # _ is any one char
+    assert await like("%\\_%") == ["footer_links_block", "sale_coupon"]                  # escaped literal _
+    assert await like("sale_c%") == ["sale_coupon"]
+    assert await like("FOOTER%") == ["footer_links_block"]
+    assert await like("footer") == []
 
 
 async def test_get_missing_entity_is_404_with_magento_message(magento_http):
@@ -145,14 +170,45 @@ async def test_put_uses_body_id_not_url_id(magento_http, magento):
     assert magento.find_block("footer_links_block")["title"] == "Footer Links"
 
 
-async def test_is_active_input_alias_and_time_fields_are_server_controlled(magento_http, magento):
+async def test_active_is_the_only_accepted_spelling_and_times_are_server_controlled(magento_http, magento):
+    # Magento resolves input keys through getters: "active" -> isActive(); there is no
+    # getIsActive()/isIsActive(), so "is_active" is rejected on stock Magento.
     r = await magento_http.put("/rest/V1/cmsBlock/1", json={"block": {
-        "id": 1, "identifier": "footer_links_block", "is_active": False,
+        "id": 1, "identifier": "footer_links_block", "is_active": False}})
+    assert r.status_code == 400 and "IsActive" in r.json()["message"]
+    r = await magento_http.put("/rest/V1/cmsBlock/1", json={"block": {
+        "id": 1, "identifier": "footer_links_block", "active": False,
         "creation_time": "1999-01-01 00:00:00", "update_time": "1999-01-01 00:00:00"}})
     assert r.status_code == 200
     body = r.json()
     assert body["active"] is False
     assert not body["creation_time"].startswith("1999")
+
+
+async def test_lenient_mode_accepts_is_active_alias_and_unknown_keys():
+    m = FakeMagento(tokens=[TOKEN], strict_properties=False)
+    m.add_block("b")
+    transport = httpx.ASGITransport(app=create_app(m))
+    async with httpx.AsyncClient(transport=transport, base_url="http://m.test",
+                                 headers={"Authorization": f"Bearer {TOKEN}"}) as c:
+        r = await c.put("/rest/V1/cmsBlock/1", json={"block": {"id": 1, "is_active": "0", "block_id": 1, "url_key": "x"}})
+        assert r.status_code == 200 and r.json()["active"] is False
+
+
+async def test_non_integer_paging_values_are_magento_400s(magento_http):
+    r = await magento_http.get("/rest/V1/cmsBlock/search", params={"searchCriteria[pageSize]": "abc"})
+    assert r.status_code == 400
+    assert r.json() == {"message": 'Invalid type for value: "abc". Expected Type: "int".'}
+    r = await magento_http.get("/rest/V1/cmsBlock/search", params={"searchCriteria[currentPage]": "x"})
+    assert r.status_code == 400
+    r = await magento_http.get("/rest/V1/cmsBlock/abc")
+    assert r.status_code == 400 and "Expected Type" in r.json()["message"]
+
+
+async def test_frozen_clock_controls_timestamps():
+    m = FakeMagento(tokens=[TOKEN], clock=lambda: "2030-05-05 05:05:05")
+    created = m.add_block("b")
+    assert created["creation_time"] == created["update_time"] == "2030-05-05 05:05:05"
 
 
 async def test_store_views(magento_http):

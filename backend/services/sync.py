@@ -38,28 +38,23 @@ class SyncService:
         # Start with source item copy
         sync_data = source_item.copy()
         
-        # Magento saves whatever entity id is in the request body, so the id must be the
-        # destination's on update and absent on create. The core REST interfaces expose
-        # only "id"; "block_id" / "page_id" exist solely on installs that extend the API.
+        # If updating with specific fields selected, start from the destination item
+        if dest_item and fields_to_sync:
+            sync_data = dest_item.copy()
+            for field in fields_to_sync:
+                if field in source_item:
+                    sync_data[field] = source_item[field]
+
+        # Magento saves whatever entity id is in the request body: a leftover source id on
+        # create would update (or overwrite) the destination entity with that id instead of
+        # inserting. So the payload id is the destination's on update and absent on create.
+        # The core REST interfaces expose only "id"; "block_id" / "page_id" exist solely on
+        # installs that extend the API, and are copied only if the destination has them.
         id_fields = ("id", "block_id", "page_id")
+        for field in id_fields:
+            sync_data.pop(field, None)
         if dest_item:
-            # If specific fields are selected, only sync those
-            if fields_to_sync:
-                # Start with destination item and update only selected fields
-                sync_data = dest_item.copy()
-                for field in fields_to_sync:
-                    if field in source_item:
-                        sync_data[field] = source_item[field]
-            for field in id_fields:
-                if field in dest_item:
-                    sync_data[field] = dest_item[field]
-                else:
-                    sync_data.pop(field, None)
-        else:
-            # Create: a leftover source id would make Magento update (or overwrite) the
-            # destination entity that happens to have that id instead of inserting.
-            for field in id_fields:
-                sync_data.pop(field, None)
+            sync_data.update({f: dest_item[f] for f in id_fields if f in dest_item})
         
         # Apply store view mapping
         if store_view_mapping and "store_id" in sync_data:
@@ -196,11 +191,12 @@ class SyncService:
                     
                 elif sync_item.action == "update" and dest_item:
                     # Update existing item
+                    item_id = dest_item.get("id")
+                    if item_id is None:
+                        raise ValueError(f"Destination item has no id: {sync_item.identifier}")
                     if data_type == DataType.BLOCKS:
-                        item_id = dest_item["id"]
                         await dest_client.update_cms_block(item_id, sync_data)
                     else:
-                        item_id = dest_item["id"]
                         await dest_client.update_cms_page(item_id, sync_data)
                     
                     result["success"] = True

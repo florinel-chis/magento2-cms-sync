@@ -78,7 +78,12 @@ async def test_full_block_sync_flow(api, source_magento, dest_magento):
 
     again = (await api.post("/api/compare/blocks", json={
         "source_instance_id": src_id, "destination_instance_id": dst_id, "force_refresh": True})).json()
-    assert (again["different"], again["missing_in_destination"]) == (0, 0)
+    assert again["missing_in_destination"] == 0
+    # ComparisonService also compares creation_time/update_time, which Magento sets
+    # server-side, so synced items may still be reported "different" by timestamp only.
+    for item in again["items"]:
+        if item["identifier"] != "dest_only_block":
+            assert set(item["differences"] or []) <= {"creation_time", "update_time"}, item
 
 
 async def test_full_page_sync_flow(api, source_magento, dest_magento):
@@ -122,6 +127,30 @@ async def test_sync_records_per_item_failures(api, dest_magento):
     errors = {d["identifier"]: d["error"] for d in status["details"] if not d["success"]}
     assert "400" in errors["contact-us-info"]
     assert errors["does-not-exist"] == "Source item not found: does-not-exist"
+
+
+async def test_update_without_destination_id_is_reported_not_crashed(api, dest_magento):
+    """Snapshots from an install whose API omits 'id' must yield a clear per-item error."""
+    from config import settings
+    import json
+    src_id, dst_id = await _create_instances(api)
+    await api.post("/api/compare/blocks", json={
+        "source_instance_id": src_id, "destination_instance_id": dst_id, "force_refresh": True})
+    snapshot = settings.instances_data_dir / str(dst_id) / "blocks.json"
+    stripped = [{k: v for k, v in b.items() if k != "id"} for b in json.loads(snapshot.read_text())]
+    snapshot.write_text(json.dumps(stripped))
+    # execute_sync re-reads the destination live, so make the live stub omit ids too
+    dest_magento._public = lambda e, kind, _orig=dest_magento._public: {  # type: ignore[method-assign]
+        k: v for k, v in _orig(e, kind).items() if k != "id"}
+
+    started = await api.post("/api/sync/blocks", json={
+        "source_instance_id": src_id, "destination_instance_id": dst_id, "data_type": "blocks",
+        "items": [{"identifier": "footer_links_block", "action": "update"}]})
+    status = (await api.get(f"/api/sync/status/{started.json()['sync_id']}")).json()
+    assert status["status"] == "completed" and status["items_failed"] == 1
+    assert status["details"][0]["error"] == "Destination item has no id: footer_links_block"
+    assert dest_magento.find_block("footer_links_block")["content"] == '<ul><li><a href="/about">About</a></li></ul>'
+    assert not dest_magento.requests_for("PUT")
 
 
 async def test_sync_marks_history_failed_when_destination_is_down(api, dest_magento):

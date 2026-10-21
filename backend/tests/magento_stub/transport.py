@@ -1,15 +1,15 @@
 """
 Route the project's outbound Magento HTTP calls into in-process stubs.
 
-``MagentoClient`` builds its own ``httpx.AsyncClient`` per request, so there is no hook
-to pass a transport. ``patch_magento_client`` swaps the ``httpx`` name inside the client
-module for a thin namespace whose ``AsyncClient`` always carries a ``StubNetwork``
-transport. Everything else (exception classes) is forwarded to the real httpx.
+``integrations.magento_client.transport_override`` is the injection point: when set, every
+``MagentoClient`` request goes through that httpx transport. ``StubNetwork`` is such a
+transport, dispatching by hostname to one ``FakeMagento`` app each.
 """
 from __future__ import annotations
 
-from types import SimpleNamespace
 from typing import Dict
+
+import pytest
 
 import httpx
 from fastapi import FastAPI
@@ -39,19 +39,8 @@ class StubNetwork(httpx.AsyncBaseTransport):
             await transport.aclose()
 
 
-def patch_magento_client(monkeypatch, network: StubNetwork) -> None:
+def patch_magento_client(monkeypatch: pytest.MonkeyPatch, network: StubNetwork) -> None:
     """Make ``integrations.magento_client`` talk to ``network`` instead of the internet."""
     import integrations.magento_client as client_module
 
-    def async_client(**kwargs):
-        kwargs["transport"] = network
-        return httpx.AsyncClient(**kwargs)
-
-    shim = SimpleNamespace(
-        AsyncClient=async_client,
-        HTTPStatusError=httpx.HTTPStatusError,
-        RequestError=httpx.RequestError,
-        ConnectError=httpx.ConnectError,
-        TimeoutException=httpx.TimeoutException,
-    )
-    monkeypatch.setattr(client_module, "httpx", shim)
+    monkeypatch.setattr(client_module, "transport_override", network)

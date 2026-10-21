@@ -28,6 +28,7 @@ from .app import (
     RecordedRequest,
     create_app,
 )
+from .seeds import PROFILES, seed_profile
 from .transport import StubNetwork, patch_magento_client
 
 __all__ = [
@@ -35,8 +36,10 @@ __all__ = [
     "PAGE_FIELDS",
     "FakeMagento",
     "MagentoError",
+    "PROFILES",
     "RecordedRequest",
     "StubNetwork",
     "create_app",
     "patch_magento_client",
+    "seed_profile",
 ]

@@ -18,18 +18,27 @@ os.environ["DATA_DIR"] = str(_TMP / "data")
 os.environ["INSTANCES_DATA_DIR"] = str(_TMP / "data" / "instances")
 os.environ["MAGENTO_RETRY_DELAY"] = "0"
 
+import logging_config  # noqa: E402
+
+# main.py calls setup_logging(log_to_file=True) at import: it would write backend/logs/*.log
+# on every test run and clear the root handlers pytest relies on for caplog.
+logging_config.setup_logging = lambda *args, **kwargs: None  # type: ignore[assignment]
+
 import httpx  # noqa: E402
 import pytest  # noqa: E402
 import pytest_asyncio  # noqa: E402
 
-from tests.magento_stub import FakeMagento, StubNetwork, create_app, patch_magento_client  # noqa: E402
+from tests.magento_stub import FakeMagento, StubNetwork, create_app, patch_magento_client, seed_profile  # noqa: E402
 
 SOURCE_HOST = "source.magento.test"
 DEST_HOST = "dest.magento.test"
 TOKEN = "integration-token"
+# Both stubs share one frozen clock so creation_time/update_time never straddle a second
+# boundary between seeding and syncing (ComparisonService compares those fields).
+FROZEN_TIME = "2026-01-01 00:00:00"
 
 
-def pytest_sessionfinish(session, exitstatus):
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     shutil.rmtree(_TMP, ignore_errors=True)
 
 
@@ -53,33 +62,29 @@ async def magento_http(magento: FakeMagento) -> AsyncIterator[httpx.AsyncClient]
         yield client
 
 
-@pytest.fixture
-def network(monkeypatch) -> StubNetwork:
+@pytest_asyncio.fixture
+async def network(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[StubNetwork]:
     """Routes MagentoClient traffic to registered stubs by hostname."""
     net = StubNetwork()
     patch_magento_client(monkeypatch, net)
-    return net
+    yield net
+    await net.aclose()
 
 
 @pytest.fixture
 def source_magento(network: StubNetwork) -> FakeMagento:
-    m = FakeMagento(name="source", tokens=[TOKEN])
-    m.seed_stock_pages()
-    m.add_block("footer_links_block", "Footer Links", "<ul><li><a href=\"/about-us\">About us</a></li></ul>")
-    m.add_block("contact-us-info", "Contact us info", "<p>Call us: +40 000 000 000</p>")
-    m.add_block("sale_coupon", "Sale coupon", "<p>Use code SPRING</p>")
-    m.add_page("about-us", "About us", "<p>We sell nice things.</p>", content_heading="About us")
+    """The 'demo' seed profile: stock pages, three blocks, an about-us page."""
+    m = FakeMagento(name="source", tokens=[TOKEN], clock=lambda: FROZEN_TIME)
+    seed_profile(m, "demo")
     network.register(SOURCE_HOST, m)
     return m
 
 
 @pytest.fixture
 def dest_magento(network: StubNetwork) -> FakeMagento:
-    m = FakeMagento(name="dest", tokens=[TOKEN])
-    m.seed_stock_pages()
-    # Drifted copy: one shared block with different content, one block only here.
-    m.add_block("footer_links_block", "Footer Links", "<ul><li><a href=\"/about\">About</a></li></ul>")
-    m.add_block("dest_only_block", "Only on destination", "<p>Not on source</p>")
+    """The 'demo-dest' profile: a drifted footer block and one block only the destination has."""
+    m = FakeMagento(name="dest", tokens=[TOKEN], clock=lambda: FROZEN_TIME)
+    seed_profile(m, "demo-dest")
     network.register(DEST_HOST, m)
     return m
 
