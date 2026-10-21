@@ -278,7 +278,7 @@ export default function CompareBlocks() {
                 <Typography variant="body2">
                   Total: {comparisonResult.total_source} in source, {comparisonResult.total_destination} in destination
                 </Typography>
-                <Chip label={`${comparisonResult.exists_in_both} Same`} color="success" size="small" />
+                <Chip label={`${comparisonResult.exists_in_both - comparisonResult.different} Same`} color="success" size="small" />
                 <Chip label={`${comparisonResult.different} Different`} color="info" size="small" />
                 <Chip label={`${comparisonResult.missing_in_destination} Missing`} color="error" size="small" />
                 {selectedItems.length > 0 && (
@@ -412,7 +412,7 @@ export default function CompareBlocks() {
                                       </TableRow>
                                       <TableRow>
                                         <TableCell component="th" scope="row">Active (Source)</TableCell>
-                                        <TableCell>{item.source_data.is_active ? 'Yes' : 'No'}</TableCell>
+                                        <TableCell>{item.source_data.active ? 'Yes' : 'No'}</TableCell>
                                       </TableRow>
                                     </>
                                   )}
@@ -424,7 +424,7 @@ export default function CompareBlocks() {
                                       </TableRow>
                                       <TableRow>
                                         <TableCell component="th" scope="row">Active (Destination)</TableCell>
-                                        <TableCell>{item.destination_data.is_active ? 'Yes' : 'No'}</TableCell>
+                                        <TableCell>{item.destination_data.active ? 'Yes' : 'No'}</TableCell>
                                       </TableRow>
                                     </>
                                   )}

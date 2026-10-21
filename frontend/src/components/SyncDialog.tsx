@@ -72,9 +72,10 @@ export default function SyncDialog({
 
   const steps = ['Select Items', 'Preview Changes', 'Execute Sync'];
 
-  // Reset only when the dialog transitions to open. The parent re-renders `items` after
-  // a sync completes (it reloads the comparison), and resetting on every `items` change
-  // used to throw the wizard back to step 1 and discard the result it was showing.
+  // Reset only when the dialog transitions to open. The parent passes a freshly filtered
+  // `items` array on every render (for example when the completion snackbar is shown), and
+  // resetting on every `items` change threw the wizard back to step 1 and discarded the
+  // result it was showing.
   const wasOpen = useRef(false);
   useEffect(() => {
     if (open && !wasOpen.current) {

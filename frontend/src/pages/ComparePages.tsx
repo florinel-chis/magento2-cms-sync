@@ -278,7 +278,7 @@ export default function ComparePages() {
                 <Typography variant="body2">
                   Total: {comparisonResult.total_source} in source, {comparisonResult.total_destination} in destination
                 </Typography>
-                <Chip label={`${comparisonResult.exists_in_both} Same`} color="success" size="small" />
+                <Chip label={`${comparisonResult.exists_in_both - comparisonResult.different} Same`} color="success" size="small" />
                 <Chip label={`${comparisonResult.different} Different`} color="info" size="small" />
                 <Chip label={`${comparisonResult.missing_in_destination} Missing`} color="error" size="small" />
                 {selectedItems.length > 0 && (
