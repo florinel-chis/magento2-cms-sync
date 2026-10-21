@@ -7,20 +7,17 @@ services:
       dockerfile: Dockerfile
     container_name: cmssync-backend
     environment:
-      - DATABASE_URL=sqlite:///./cmssync.db
-      - SECRET_KEY=${SECRET_KEY}
+      # SQLite file inside the persisted data volume; the async driver is required.
+      - DATABASE_URL=sqlite+aiosqlite:////app/data/cmssync.db
+      - DATA_DIR=/app/data
+      - INSTANCES_DATA_DIR=/app/data/instances
+      # Browser origins allowed to call the API directly (comma-separated). The bundled
+      # frontend talks to the API through nginx on the same origin, so this only matters
+      # if you call the API from another origin.
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost}
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
     volumes:
       - backend-data:/app/data
-      - db-data:/app
     restart: always
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/docs"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
     networks:
       - cmssync-network
 
@@ -28,8 +25,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-      args:
-        - REACT_APP_API_URL=${REACT_APP_API_URL:-http://localhost:8000}
+    # The built UI calls /api on its own origin; nginx.conf proxies that to the backend.
     container_name: cmssync-frontend
     ports:
       - "${PORT:-80}:80"
@@ -45,4 +41,3 @@ networks:
 
 volumes:
   backend-data:
-  db-data:

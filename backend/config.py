@@ -1,3 +1,4 @@
+import json
 from pydantic_settings import BaseSettings
 from pathlib import Path
 
@@ -13,8 +14,8 @@ class Settings(BaseSettings):
     data_dir: Path = Path("data")
     instances_data_dir: Path = Path("data/instances")
     
-    # CORS Origins
-    cors_origins: list[str] = ["http://localhost:3000", "http://localhost:3001"]
+    # CORS Origins: comma-separated string or JSON list (see cors_origin_list)
+    cors_origins: str = "http://localhost:3000,http://localhost:3001"
     
     # Magento API Settings
     magento_timeout: int = 30
@@ -25,6 +26,14 @@ class Settings(BaseSettings):
     json_indent: int = 2
     json_ensure_ascii: bool = False
     
+    @property
+    def cors_origin_list(self) -> list[str]:
+        """CORS_ORIGINS parsed into a list; accepts 'a,b' as well as '["a","b"]'."""
+        value = self.cors_origins.strip()
+        if value.startswith("["):
+            return [str(origin) for origin in json.loads(value)]
+        return [origin.strip() for origin in value.split(",") if origin.strip()]
+
     class Config:
         env_file = ".env"
         case_sensitive = False
