@@ -2,19 +2,23 @@
 
 ## Components
 
-```
-Browser ──> React UI (frontend/, Material UI, Zustand)
-               │  /api/*  (same origin: nginx or CRA proxy)
-               ▼
-           FastAPI backend (backend/)
-             ├─ api/        thin routers: instances, compare, sync, history, test
-             ├─ services/   comparison rules, sync orchestration, snapshot storage
-             ├─ integrations/magento_client.py   httpx client for the Magento REST API
-             ├─ models/     SQLAlchemy models (async SQLite) and Pydantic schemas
-             └─ data/instances/<id>/{blocks,pages}.json   cached snapshots
-               │
-               ▼  HTTPS, Bearer token
-           Magento 2 instances (REST API /rest/V1)
+```mermaid
+flowchart TD
+    Browser["Browser"] -->|"HTTP"| UI["React UI<br/>frontend/ · Material UI · Zustand"]
+    UI -->|"/api/* (same origin: nginx or CRA proxy)"| API["FastAPI backend"]
+
+    subgraph Backend["backend/"]
+        API --> Routers["api/<br/>thin routers: instances, compare, sync, history, test"]
+        Routers --> Services["services/<br/>comparison rules, sync orchestration, snapshot storage"]
+        Services --> Client["integrations/magento_client.py<br/>httpx client for the Magento REST API"]
+        Routers --> Models["models/<br/>SQLAlchemy models (async SQLite), Pydantic schemas"]
+        Services --> Models
+        Services --> Snapshots[("data/instances/&lt;id&gt;/<br/>blocks.json, pages.json")]
+        Models --> DB[("SQLite<br/>instances, data_snapshots, sync_history")]
+    end
+
+    Client -->|"HTTPS, Bearer token<br/>/rest/V1"| Source["Magento 2<br/>source instance"]
+    Client -->|"HTTPS, Bearer token<br/>/rest/V1"| Dest["Magento 2<br/>destination instance"]
 ```
 
 The backend is a single process. Syncs run as FastAPI background tasks inside it. At
@@ -33,6 +37,38 @@ startup, runs left `pending` or `in_progress` by a previous process are marked `
 4. **Sync**: a `sync_history` row is created (`pending`), the request returns, and the
    background task runs the sync, updates the row (`in_progress` → `completed`/`failed`,
    counts, per-item results) and refreshes the destination snapshot.
+
+### Sync sequence
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant UI as React UI
+    participant API as FastAPI (api/sync.py)
+    participant DB as SQLite
+    participant BG as Background task
+    participant FS as Snapshots (JSON)
+    participant M as Destination Magento
+
+    UI->>API: POST /api/sync/blocks or /pages (items, options)
+    API->>DB: insert sync_history (pending)
+    API-->>UI: 200 with sync_id, status pending
+    API->>BG: schedule _execute_sync(sync_id)
+    loop every few seconds
+        UI->>API: GET /api/sync/status/{sync_id}
+        API-->>UI: current row
+    end
+    BG->>DB: status = in_progress
+    BG->>FS: load source snapshot
+    BG->>M: GET cmsBlock/search or cmsPage/search (live destination list)
+    loop each selected item
+        BG->>M: POST (create) or PUT /{id} (update)
+        M-->>BG: saved entity or error
+    end
+    BG->>M: re-fetch destination (refresh snapshot)
+    BG->>FS: write destination snapshot
+    BG->>DB: status = completed or failed, counts, sync_details
+```
 
 ## Storage
 
